@@ -935,7 +935,7 @@
         tracePoly(g, dPts, true);
         g.clip();
         const baseX = isLeft ? 390 : 246;
-        const topY = 230;
+        const topY = 395;
         g.strokeStyle = 'rgba(42, 32, 24, 0.55)';
         g.lineWidth = 2.4;
         g.beginPath(); g.moveTo(baseX, topY + 110); g.lineTo(baseX + 290, topY + 110); g.stroke();
@@ -2073,41 +2073,44 @@
   /* =========================================================================
    * 6. FAST 12FPS ARTICULATED RENDERERS (ZERO ctx.shadowBlur / ZERO ctx.filter)
    * ========================================================================= */
-  function getStopMotionJitter(pieceId, animFrame, ampScale = 1.0) {
-    const jx = (hash32(pieceId, animFrame, 1) * 2 - 1) * 2.0 * ampScale;
-    const jy = (hash32(pieceId, animFrame, 2) * 2 - 1) * 2.0 * ampScale;
-    const jrot = (hash32(pieceId, animFrame, 3) * 2 - 1) * 0.5 * (Math.PI / 180) * ampScale;
+  function getStopMotionJitter(pieceId, animFrame, posScale = 1.0, rotScale = 1.0) {
+    const jx = (hash32(pieceId, animFrame, 1) * 2 - 1) * 2.0 * posScale;
+    const jy = (hash32(pieceId, animFrame, 2) * 2 - 1) * 2.0 * posScale;
+    const jrot = (hash32(pieceId, animFrame, 3) * 2 - 1) * 0.5 * (Math.PI / 180) * rotScale;
     return { jx, jy, jrot };
   }
 
   function projectWorld(wx, wy, wz, cam) {
     const dz = wz - cam.z;
-    if (dz <= 95 || dz >= 4600) return null;
+    if (dz <= 180 || dz >= 3600) return null;
     const scale = FOCAL / dz;
     const sx = CX + (wx - cam.x) * scale;
     const sy = CY + (wy - cam.y) * scale;
 
-    const farFade = 1 - smoothstep(3200, 4550, dz);
-    const nearFade = smoothstep(105, 250, dz);
+    const farFade = 1 - smoothstep(2600, 3550, dz);
+    const nearFade = smoothstep(190, 340, dz);
     const alpha = farFade * nearFade;
     if (alpha <= 0.006) return null;
 
     // Z-depth dynamic shadow offset (down-and-right from upper-left desk lamp)
-    const closeness = clamp(1 - (dz - 350) / 2800, 0.14, 1.0);
-    const shadowX = lerp(5, 24, closeness) * clamp(scale, 0.35, 1.8);
-    const shadowY = lerp(7, 30, closeness) * clamp(scale, 0.35, 1.8);
-    const dofFactor = dz < 440 ? clamp((440 - dz) / 240, 0, 1) : 0;
+    const closeness = clamp(1 - (dz - 520) / 1400, 0.18, 1.0);
+    const shadowX = lerp(5, 22, closeness) * clamp(scale, 0.45, 1.55);
+    const shadowY = lerp(7, 28, closeness) * clamp(scale, 0.45, 1.55);
+    const dofFactor = dz < 680 ? clamp((680 - dz) / 220, 0, 0.85) : 0;
 
     return { sx, sy, scale, dz, alpha, shadowX, shadowY, dofFactor };
   }
 
   function renderLayer(item, cam, animFrame, breathScale = 1.0) {
-    const p = projectWorld(item.wx, item.wy, item.wz, cam);
+    const layerCam = item.cam || cam;
+    const p = projectWorld(item.wx, item.wy, item.wz, layerCam);
     if (!p) return;
     const finalAlpha = p.alpha * (item.alpha ?? 1);
     if (finalAlpha <= 0.008) return;
 
-    const { jx, jy, jrot } = getStopMotionJitter(item.id, animFrame, (item.jitterScale ?? 1.0) * breathScale);
+    const posScale = (item.jitterScale ?? 0.85) * breathScale;
+    const rotScale = (item.rotJitter ?? (item.wide ? 0.14 : 0.78)) * breathScale;
+    const { jx, jy, jrot } = getStopMotionJitter(item.id, animFrame, posScale, rotScale);
 
     ctx.save();
     ctx.globalAlpha = finalAlpha;
@@ -2332,20 +2335,48 @@
     };
   }
 
-  function getCamera(tCam) {
-    const t = clamp(tCam, 0, TOTAL_DURATION);
-    let z;
-    if (t <= 32.5) {
-      z = t * 325;
-    } else {
-      const u = (t - 32.5) / 3.5;
-      z = 32.5 * 325 + 325 * 3.5 * (1 - Math.pow(1 - u, 2.65)) / 2.65;
+  // Calm, Anti-Vertigo Multiplane Paper-Theater & Long-Scroll Camera per Chapter!
+  // Replaces relentless inward tunnel zoom with varied, poised gallery camera moves:
+  //   Ch1: Gentle opening push-in as newspapers part
+  //   Ch2: Smooth horizontal left-to-right tracking pan following the steam locomotive
+  //   Ch3: Upward blueprint page-peel + serene slight diagonal drift across star chart
+  //   Ch4: Gentle tilt-down onto the Pop-Up Book horizon + calm gallery pan
+  //   Ch5: True Chinese long-scroll (长卷) horizontal glide across sea bridge & green mountains
+  //   Ch6: Gentle ascent through parting clouds into the tranquil cosmic finale
+  function getChapterCam(chIdx, tCam) {
+    const lt = tCam - chIdx * 6.0;
+    const u = clamp(lt / 6.0, -0.25, 1.25);
+    const s = easeInOutSine(clamp(lt / 6.0, 0, 1));
+
+    switch (chIdx) {
+      case 0: {
+        const exitShift = smoothstep(5.0, 6.2, tCam) * 65;
+        return { x: 0, y: 0, z: s * 125 + exitShift };
+      }
+      case 1: {
+        const enterX = (1 - easeOutCubic(smoothstep(5.2, 6.6, tCam))) * -140;
+        return { x: lerp(-95, 85, s) + enterX, y: 0, z: s * 78 };
+      }
+      case 2: {
+        const exitUp = smoothstep(17.0, 18.4, tCam) * 380;
+        return { x: lerp(-45, 45, s), y: lerp(22, -22, s) + exitUp, z: s * 82 };
+      }
+      case 3: {
+        const enterDown = (1 - easeOutCubic(smoothstep(17.1, 18.8, tCam))) * -360;
+        const exitScroll = smoothstep(23.1, 24.4, tCam) * 580;
+        return { x: lerp(-55, 55, s) + exitScroll, y: enterDown, z: s * 68 };
+      }
+      case 4: {
+        const enterScroll = (1 - easeOutCubic(smoothstep(23.2, 24.7, tCam))) * -560;
+        const exitDown = smoothstep(29.2, 30.8, tCam) * -420;
+        return { x: lerp(-105, 105, s) + enterScroll, y: exitDown, z: s * 72 };
+      }
+      default: {
+        const enterUp = (1 - easeOutCubic(smoothstep(29.3, 32.0, tCam))) * 340;
+        const zEase = easeOutCubic(clamp((tCam - 30.0) / 5.0, 0, 1));
+        return { x: 0, y: enterUp, z: zEase * 88 };
+      }
     }
-    const x = Math.sin(t * 0.36) * 28 - smoothstep(24, 29, t) * 24 + smoothstep(29, 34, t) * 24;
-    const y = Math.cos(t * 0.28) * 14
-            - smoothstep(11.5, 14.5, t) * 42 + smoothstep(16.8, 19.5, t) * 42
-            - smoothstep(29.2, 33.5, t) * 34;
-    return { x, y, z };
   }
 
   const BG_STARS = Array.from({ length: 160 }, (_, i) => ({
@@ -2389,17 +2420,17 @@
    * 8. COLLECT ALL 6 HISTORICAL CHAPTERS INTO DEPTH-SORTED WORLD LAYERS
    * ========================================================================= */
   const DOVES = [
-    { id: 1101, wz: 1520, startX: -940, endX: 980,  baseY: -60,  ampY: 85,  speed: 0.21, delay: 0.1, scale: 0.92, phase: 0 },
-    { id: 1102, wz: 1640, startX: -1020, endX: 920, baseY: -170, ampY: 85,  speed: 0.19, delay: 0.5, scale: 1.04, phase: 1 },
-    { id: 1103, wz: 1740, startX: -880, endX: 1100, baseY: -95,  ampY: 95,  speed: 0.22, delay: 1.0, scale: 0.88, phase: 2 },
-    { id: 1104, wz: 1840, startX: -980, endX: 1020, baseY: -240, ampY: 70,  speed: 0.18, delay: 0.3, scale: 0.95, phase: 3 },
-    { id: 1105, wz: 1990, startX: -1060, endX: 960, baseY: -195, ampY: 85,  speed: 0.20, delay: 1.4, scale: 0.90, phase: 0 },
-    { id: 1106, wz: 2090, startX: -920, endX: 1080, baseY: -290, ampY: 65,  speed: 0.17, delay: 0.8, scale: 0.84, phase: 2 },
-    { id: 1107, wz: 1680, startX: -840, endX: 1040, baseY: 30,   ampY: 75,  speed: 0.23, delay: 1.7, scale: 0.94, phase: 1 },
-    { id: 1108, wz: 1900, startX: -1100, endX: 960, baseY: -135, ampY: 95,  speed: 0.19, delay: 2.1, scale: 0.90, phase: 3 },
-    { id: 1109, wz: 2150, startX: -960, endX: 1120, baseY: -240, ampY: 80,  speed: 0.18, delay: 2.4, scale: 0.85, phase: 1 },
-    { id: 1110, wz: 1580, startX: -760, endX: 980,  baseY: -210, ampY: 70,  speed: 0.22, delay: 1.9, scale: 0.90, phase: 0 },
-    { id: 1111, wz: 2040, startX: -1040, endX: 1020,baseY: -80,  ampY: 85,  speed: 0.20, delay: 2.7, scale: 0.92, phase: 2 }
+    { id: 1101, wz: 860,  startX: -920, endX: 960,  baseY: -65,  ampY: 75,  speed: 0.19, delay: 0.1, scale: 0.90, phase: 0 },
+    { id: 1102, wz: 910,  startX: -1000, endX: 920, baseY: -175, ampY: 75,  speed: 0.18, delay: 0.5, scale: 1.00, phase: 1 },
+    { id: 1103, wz: 955,  startX: -880, endX: 1080, baseY: -95,  ampY: 85,  speed: 0.20, delay: 1.0, scale: 0.88, phase: 2 },
+    { id: 1104, wz: 990,  startX: -960, endX: 1020, baseY: -235, ampY: 65,  speed: 0.17, delay: 0.3, scale: 0.94, phase: 3 },
+    { id: 1105, wz: 1075, startX: -1040, endX: 960, baseY: -195, ampY: 75,  speed: 0.19, delay: 1.4, scale: 0.88, phase: 0 },
+    { id: 1106, wz: 1125, startX: -920, endX: 1080, baseY: -285, ampY: 60,  speed: 0.16, delay: 0.8, scale: 0.84, phase: 2 },
+    { id: 1107, wz: 930,  startX: -840, endX: 1040, baseY: 20,   ampY: 65,  speed: 0.21, delay: 1.7, scale: 0.92, phase: 1 },
+    { id: 1108, wz: 1055, startX: -1080, endX: 960, baseY: -135, ampY: 85,  speed: 0.18, delay: 2.1, scale: 0.90, phase: 3 },
+    { id: 1109, wz: 1150, startX: -960, endX: 1100, baseY: -240, ampY: 75,  speed: 0.17, delay: 2.4, scale: 0.85, phase: 1 },
+    { id: 1110, wz: 885,  startX: -760, endX: 980,  baseY: -205, ampY: 65,  speed: 0.20, delay: 1.9, scale: 0.88, phase: 0 },
+    { id: 1111, wz: 1100, startX: -1020, endX: 1020,baseY: -80,  ampY: 75,  speed: 0.19, delay: 2.7, scale: 0.90, phase: 2 }
   ];
 
   const GOLD_CONFETTI = Array.from({ length: 28 }, (_, i) => ({
@@ -2408,558 +2439,591 @@
     spreadX: (hash32(3200, i, 1) - 0.5) * 95,
     spreadY: (hash32(3200, i, 2) - 0.5) * 95,
     size: 7 + hash32(3200, i, 3) * 11,
-    spinSpeed: (hash32(3200, i, 4) - 0.5) * 7,
+    spinSpeed: (hash32(3200, i, 4) - 0.5) * 5,
     shape: i % 3
   }));
 
-  function gatherSceneLayers(cam, tCam, tObj, animFrame) {
-    const layers = [];
+  function gatherSceneLayers(tCam, tObj, animFrame) {
+    const stages = [];
+
+    // Helper: push a chapter's locally depth-sorted layers in order
+    function addStage(chIdx, baseOrder, buildFn) {
+      const cam = getChapterCam(chIdx, tCam);
+      const list = [];
+      buildFn(list, cam);
+      list.sort((a, b) => b.wz - a.wz);
+      for (const item of list) {
+        item.cam = cam;
+        item._stageOrder = baseOrder;
+        stages.push(item);
+      }
+    }
 
     // =======================================================================
-    // CHAPTER 1: 1949 · 换了人间 (0s – 6s | World Z: 1240 – 2280)
+    // CHAPTER 1: 1949 · 换了人间 (0s – 6s | Gentle Opening Diorama Push-In)
     // =======================================================================
-    const ch1Alpha = 1 - smoothstep(5.3, 6.5, tCam);
+    const ch1Alpha = 1 - smoothstep(5.1, 6.2, tCam);
     if (ch1Alpha > 0.01) {
-      const openPart = smoothstep(0.0, 4.6, tCam);
+      addStage(0, 1, (layers) => {
+        const openPart = easeInOutSine(smoothstep(0.15, 2.7, tCam));
 
-      layers.push({
-        id: 1001, wx: -880 - openPart * 290, wy: 0, wz: 1240,
-        alpha: ch1Alpha, jitterScale: 0.75,
-        draw: (g, p) => drawSprite(g, Sprites.newsLeft, -480, -840, p)
-      });
-      layers.push({
-        id: 1002, wx: 880 + openPart * 290, wy: 0, wz: 1240,
-        alpha: ch1Alpha, jitterScale: 0.75,
-        draw: (g, p) => drawSprite(g, Sprites.newsRight, -480, -840, p)
-      });
-
-      layers.push({
-        id: 1010, wx: -560, wy: 560, wz: 1470, alpha: ch1Alpha,
-        draw: (g, p) => drawWheatBankFast(g, p, tObj, 3, 620, 1010, 1)
-      });
-      layers.push({
-        id: 1011, wx: 560, wy: 565, wz: 1500, alpha: ch1Alpha,
-        draw: (g, p) => drawWheatBankFast(g, p, tObj, 3, 620, 1011, -1)
-      });
-      layers.push({
-        id: 1012, wx: 0, wy: 610, wz: 1650, alpha: ch1Alpha,
-        draw: (g, p) => drawWheatBankFast(g, p, tObj, 6, 1520, 1012, 1)
-      });
-
-      layers.push({
-        id: 1020, wx: 0, wy: 430, wz: 1785, alpha: ch1Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.huabiaoBridge, -770, -170, p)
-      });
-
-      for (const l of [
-        { id: 1030, wx: -640, wy: -395, wz: 1620, sc: 1.24, ph: 0.2 },
-        { id: 1031, wx: 640,  wy: -395, wz: 1620, sc: 1.24, ph: 1.8 },
-        { id: 1032, wx: -380, wy: -365, wz: 1810, sc: 0.96, ph: 0.9 },
-        { id: 1033, wx: 380,  wy: -365, wz: 1810, sc: 0.96, ph: 2.5 },
-        { id: 1034, wx: -185, wy: -345, wz: 1850, sc: 0.80, ph: 1.4 },
-        { id: 1035, wx: 185,  wy: -345, wz: 1850, sc: 0.80, ph: 3.1 }
-      ]) {
+        // Torn 1949 vintage broadsheets parting calmly left & right
         layers.push({
-          id: l.id, wx: l.wx, wy: l.wy, wz: l.wz, alpha: ch1Alpha,
-          draw: (g, p) => drawRedLanternFast(g, p, tObj, l.ph, l.sc)
+          id: 1001, wx: -690 - openPart * 620, wy: 0, wz: 760,
+          alpha: ch1Alpha * (1 - smoothstep(2.4, 3.2, tCam)),
+          jitterScale: 0.55, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.newsLeft, -480, -840, p)
         });
-      }
-
-      layers.push({
-        id: 1040, wx: 0, wy: 120, wz: 1940, alpha: ch1Alpha,
-        draw: (g, p) => {
-          drawSprite(g, Sprites.tiananmen, -680, -340, p);
-          for (let f = 0; f < 8; f++) {
-            const fx = -480 + f * 137;
-            if (Math.abs(fx) < 120) continue;
-            const wave = Math.sin(tObj * 6 + f * 1.1) * 7;
-            g.strokeStyle = '#f2cc70'; g.lineWidth = 2.4;
-            g.beginPath(); g.moveTo(fx, 44); g.lineTo(fx, -18); g.stroke();
-            g.fillStyle = '#d13426';
-            g.beginPath(); g.moveTo(fx, -18);
-            g.quadraticCurveTo(fx + 18, -22 + wave, fx + 36, -12 - wave * 0.5);
-            g.lineTo(fx + 32, 6 - wave * 0.5);
-            g.quadraticCurveTo(fx + 16, wave, fx, 4); g.closePath(); g.fill();
-          }
-        }
-      });
-
-      for (const d of DOVES) {
-        const u = ((tObj - d.delay) * d.speed + 1.2) % 1.35;
-        const wx = lerp(d.startX, d.endX, u / 1.35);
-        const wy = d.baseY - u * 115 + Math.sin(tObj * 2.5 + d.phase) * d.ampY * 0.35;
-        const pose = ((animFrame + d.phase) % 4 + 4) % 4;
         layers.push({
-          id: d.id, wx, wy, wz: d.wz, alpha: ch1Alpha,
-          scaleX: d.scale, scaleY: d.scale,
-          rot: -0.14 + Math.cos(tObj * 2.5 + d.phase) * 0.08,
-          draw: (g, p) => drawSprite(g, Sprites.dovePoses[pose], -65, -65, p)
+          id: 1002, wx: 690 + openPart * 620, wy: 0, wz: 760,
+          alpha: ch1Alpha * (1 - smoothstep(2.4, 3.2, tCam)),
+          jitterScale: 0.55, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.newsRight, -480, -840, p)
         });
-      }
 
-      layers.push({
-        id: 1060, wx: 0, wy: -10, wz: 2290, alpha: ch1Alpha,
-        draw: g => {
-          g.save();
-          g.rotate(tObj * 0.04);
-          for (let i = 0; i < 24; i++) {
-            const a0 = (i / 24) * Math.PI * 2;
-            g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, 1500, a0, a0 + (Math.PI / 24) * 0.92); g.closePath();
-            g.fillStyle = i % 2 === 0 ? 'rgba(214, 152, 54, 0.16)' : 'rgba(186, 52, 40, 0.09)';
-            g.fill();
-          }
-          g.beginPath(); g.arc(0, 0, 230, 0, Math.PI * 2);
-          g.fillStyle = PaperAtlas.ochre.pattern; g.globalAlpha *= 0.72; g.fill();
-          g.restore();
-        }
-      });
-
-      const cloudPart = smoothstep(3.2, 6.2, tCam);
-      layers.push({
-        id: 1065, wx: -610 - cloudPart * 280, wy: -270, wz: 2150, alpha: ch1Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.warmCloud, -310, -130, p)
-      });
-      layers.push({
-        id: 1066, wx: 620 + cloudPart * 280, wy: -220, wz: 2210, alpha: ch1Alpha, scaleX: -1,
-        draw: (g, p) => drawSprite(g, Sprites.warmCloud, -310, -130, p)
-      });
-    }
-
-    // =======================================================================
-    // CHAPTER 2: 1950s–1960s · 工业奠基 (6s – 12s | World Z: 3340 – 4460)
-    // =======================================================================
-    const ch2Alpha = smoothstep(4.8, 6.2, tCam) * (1 - smoothstep(11.3, 12.6, tCam));
-    if (ch2Alpha > 0.01) {
-      layers.push({
-        id: 2001, wx: -760, wy: 265, wz: 3360, alpha: ch2Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.origamiMtnLeft, -490, -380, p)
-      });
-      layers.push({
-        id: 2002, wx: 780, wy: 270, wz: 3440, alpha: ch2Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.origamiMtnRight, -490, -380, p)
-      });
-      layers.push({
-        id: 2008, wx: 180, wy: 298, wz: 3710, alpha: ch2Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.trestleTrack, -1120, -26, p)
-      });
-
-      const locoProgress = clamp((tObj - 5.6) / 6.2, 0.05, 1.15);
-      const locoX = lerp(-680, 620, locoProgress);
-      const locoY = 238;
-      layers.push({
-        id: 2010, wx: locoX, wy: locoY, wz: 3685, alpha: ch2Alpha,
-        draw: (g, p) => drawSteamLocomotiveFast(g, p, tObj)
-      });
-      layers.push({
-        id: 2012, wx: -690, wy: 150, wz: 3605, alpha: ch2Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.tunnelPortal, -210, -210, p)
-      });
-
-      const chimneyX = locoX + 146, chimneyY = locoY - 165;
-      for (let pIdx = 0; pIdx < 10; pIdx++) {
-        const life = ((tObj * 0.72 + pIdx * 0.1) % 1.0);
-        const px = chimneyX - life * 480 + Math.sin(life * 7 + pIdx) * 24;
-        const py = chimneyY - life * 245 - Math.sqrt(life) * 65;
-        const puffScale = lerp(0.28, 1.14, life);
-        const pAlpha = smoothstep(0, 0.12, life) * (1 - smoothstep(0.68, 1.0, life));
-        const puffSprite = Sprites.cottonPuffs[pIdx % 4];
+        // Swaying golden papercut wheat banks along foreground bottom
         layers.push({
-          id: 2100 + pIdx, wx: px, wy: py, wz: 3655 + pIdx * 5,
-          alpha: ch2Alpha * pAlpha * 0.95,
-          scaleX: puffScale, scaleY: puffScale,
-          rot: life * 0.6 * (pIdx % 2 === 0 ? 1 : -1),
-          draw: (g, p) => drawSprite(g, puffSprite, -110, -100, p)
+          id: 1010, wx: -520, wy: 470, wz: 840, alpha: ch1Alpha, wide: true,
+          draw: (g, p) => drawWheatBankFast(g, p, tObj, 3, 580, 1010, 1)
         });
-      }
-
-      const gearAngle = tObj * 0.78;
-      layers.push({
-        id: 2030, wx: -640, wy: -210, wz: 3980, alpha: ch2Alpha, rot: gearAngle,
-        draw: (g, p) => drawSprite(g, Sprites.gearSteel, -Sprites.gearSteel.w * 0.5, -Sprites.gearSteel.h * 0.5, p)
-      });
-      layers.push({
-        id: 2031, wx: -270, wy: -365, wz: 4050, alpha: ch2Alpha, rot: -gearAngle * (16 / 12) + 0.24,
-        draw: (g, p) => drawSprite(g, Sprites.gearOchre, -Sprites.gearOchre.w * 0.5, -Sprites.gearOchre.h * 0.5, p)
-      });
-      layers.push({
-        id: 2032, wx: 650, wy: -220, wz: 4020, alpha: ch2Alpha, rot: -gearAngle * 0.85,
-        draw: (g, p) => drawSprite(g, Sprites.gearBlue, -Sprites.gearBlue.w * 0.5, -Sprites.gearBlue.h * 0.5, p)
-      });
-      layers.push({
-        id: 2033, wx: 295, wy: -70, wz: 4110, alpha: ch2Alpha, rot: gearAngle * 0.85 * (18 / 12) + 0.15,
-        draw: (g, p) => drawSprite(g, Sprites.gearRust, -Sprites.gearRust.w * 0.5, -Sprites.gearRust.h * 0.5, p)
-      });
-      layers.push({
-        id: 2040, wx: 0, wy: 245, wz: 4240, alpha: ch2Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.blueprintBridge, -1300, -180, p)
-      });
-      layers.push({
-        id: 2045, wx: 0, wy: -35, wz: 4440, alpha: ch2Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.blueprintFactory, -710, -310, p)
-      });
-    }
-
-    // =======================================================================
-    // CHAPTER 3: 1970 · 东方红一号 (12s – 18s | World Z: 4960 – 6360)
-    // =======================================================================
-    const ch3Alpha = smoothstep(11.1, 12.4, tCam) * (1 - smoothstep(17.1, 18.4, tCam));
-    if (ch3Alpha > 0.01) {
-      const peelProgress = easeInOutSine(smoothstep(11.4, 14.2, tObj));
-      layers.push({
-        id: 3001, wx: -540 - peelProgress * 560, wy: -180 - peelProgress * 580, wz: 4960,
-        alpha: ch3Alpha, rot: -peelProgress * 0.36,
-        draw: (g, p) => drawSprite(g, Sprites.peelLeft, -490, -460, p)
-      });
-      layers.push({
-        id: 3002, wx: 540 + peelProgress * 560, wy: -180 - peelProgress * 580, wz: 4960,
-        alpha: ch3Alpha, rot: peelProgress * 0.36,
-        draw: (g, p) => drawSprite(g, Sprites.peelRight, -490, -460, p)
-      });
-
-      layers.push({
-        id: 3010, wx: 0, wy: -20, wz: 5760, alpha: ch3Alpha,
-        rot: tObj * 0.035, scaleX: 1.15, scaleY: 1.15,
-        draw: (g, p) => drawSprite(g, Sprites.starChartRing, -740, -740, p, true)
-      });
-      layers.push({
-        id: 3011, wx: 20, wy: -10, wz: 6320, alpha: ch3Alpha * 0.72,
-        rot: -tObj * 0.025 + 0.8, scaleX: 1.48, scaleY: 1.48,
-        draw: (g, p) => drawSprite(g, Sprites.starChartRing, -740, -740, p, true)
-      });
-
-      function orbitPoint(u) {
-        const p0 = [-980, 240], p1 = [-20, -350], p2 = [980, -155];
-        const inv = 1 - u;
-        return [
-          inv * inv * p0[0] + 2 * inv * u * p1[0] + u * u * p2[0],
-          inv * inv * p0[1] + 2 * inv * u * p1[1] + u * u * p2[1]
-        ];
-      }
-
-      layers.push({
-        id: 3020, wx: 0, wy: 0, wz: 5740, alpha: ch3Alpha,
-        draw: g => {
-          g.strokeStyle = 'rgba(244, 214, 134, 0.76)'; g.lineWidth = 3.2;
-          g.setLineDash([18, 14]); g.lineDashOffset = -tObj * 36;
-          g.beginPath(); g.moveTo(-980, 240); g.quadraticCurveTo(-20, -350, 980, -155); g.stroke();
-          g.setLineDash([]);
-        }
-      });
-
-      const satU = clamp((tObj - 11.8) / 6.2, 0.08, 0.94);
-      const [satX, satY] = orbitPoint(satU);
-
-      layers.push({
-        id: 3025, wx: satX, wy: satY, wz: 5720, alpha: ch3Alpha,
-        draw: g => {
-          g.setLineDash([16, 10]);
-          for (let w = 0; w < 5; w++) {
-            const p = ((tObj * 0.65 + w * 0.2) % 1.0);
-            const r = 75 + p * 420, a = (1 - p) * 0.82;
-            g.strokeStyle = w % 2 === 0
-              ? `rgba(245, 206, 114, ${a.toFixed(2)})`
-              : `rgba(230, 240, 250, ${(a * 0.8).toFixed(2)})`;
-            g.lineWidth = lerp(3.4, 1.2, p);
-            g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.stroke();
-          }
-          g.setLineDash([]);
-        }
-      });
-
-      for (const c of GOLD_CONFETTI) {
-        const cu = satU - c.lag;
-        if (cu < 0.01) continue;
-        const [cx0, cy0] = orbitPoint(cu);
-        const drift = c.lag * 2.2;
-        const wx = cx0 + c.spreadX * drift + Math.sin(tObj * 3 + c.id) * 14;
-        const wy = cy0 + c.spreadY * drift + Math.cos(tObj * 2.6 + c.id) * 14;
         layers.push({
-          id: c.id, wx, wy, wz: 5705,
-          rot: tObj * c.spinSpeed + c.id,
-          alpha: ch3Alpha * (1 - smoothstep(0.28, 0.44, c.lag)),
+          id: 1011, wx: 520, wy: 475, wz: 855, alpha: ch1Alpha, wide: true,
+          draw: (g, p) => drawWheatBankFast(g, p, tObj, 3, 580, 1011, -1)
+        });
+        layers.push({
+          id: 1012, wx: 0, wy: 505, wz: 915, alpha: ch1Alpha, wide: true,
+          draw: (g, p) => drawWheatBankFast(g, p, tObj, 6, 1460, 1012, 1)
+        });
+
+        layers.push({
+          id: 1020, wx: 0, wy: 365, wz: 965, alpha: ch1Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.huabiaoBridge, -770, -170, p)
+        });
+
+        for (const l of [
+          { id: 1030, wx: -590, wy: -365, wz: 880, sc: 1.10, ph: 0.2 },
+          { id: 1031, wx: 590,  wy: -365, wz: 880, sc: 1.10, ph: 1.8 },
+          { id: 1032, wx: -345, wy: -340, wz: 975, sc: 0.88, ph: 0.9 },
+          { id: 1033, wx: 345,  wy: -340, wz: 975, sc: 0.88, ph: 2.5 },
+          { id: 1034, wx: -165, wy: -325, wz: 995, sc: 0.74, ph: 1.4 },
+          { id: 1035, wx: 165,  wy: -325, wz: 995, sc: 0.74, ph: 3.1 }
+        ]) {
+          layers.push({
+            id: l.id, wx: l.wx, wy: l.wy, wz: l.wz, alpha: ch1Alpha,
+            draw: (g, p) => drawRedLanternFast(g, p, tObj, l.ph, l.sc)
+          });
+        }
+
+        // Woodblock Tiananmen Gate Tower centerpiece (stately, steady scale!)
+        layers.push({
+          id: 1040, wx: 0, wy: 105, wz: 1030, alpha: ch1Alpha, wide: true,
+          draw: (g, p) => {
+            drawSprite(g, Sprites.tiananmen, -680, -340, p);
+            for (let f = 0; f < 8; f++) {
+              const fx = -480 + f * 137;
+              if (Math.abs(fx) < 120) continue;
+              const wave = Math.sin(tObj * 5.2 + f * 1.1) * 7;
+              g.strokeStyle = '#f2cc70'; g.lineWidth = 2.4;
+              g.beginPath(); g.moveTo(fx, 44); g.lineTo(fx, -18); g.stroke();
+              g.fillStyle = '#d13426';
+              g.beginPath(); g.moveTo(fx, -18);
+              g.quadraticCurveTo(fx + 18, -22 + wave, fx + 36, -12 - wave * 0.5);
+              g.lineTo(fx + 32, 6 - wave * 0.5);
+              g.quadraticCurveTo(fx + 16, wave, fx, 4); g.closePath(); g.fill();
+            }
+          }
+        });
+
+        for (const d of DOVES) {
+          const u = ((tObj - d.delay) * d.speed + 1.2) % 1.35;
+          const wx = lerp(d.startX, d.endX, u / 1.35);
+          const wy = d.baseY - u * 105 + Math.sin(tObj * 2.3 + d.phase) * d.ampY * 0.32;
+          const pose = ((animFrame + d.phase) % 4 + 4) % 4;
+          layers.push({
+            id: d.id, wx, wy, wz: d.wz, alpha: ch1Alpha,
+            scaleX: d.scale, scaleY: d.scale,
+            rot: -0.14 + Math.cos(tObj * 2.3 + d.phase) * 0.07,
+            draw: (g, p) => drawSprite(g, Sprites.dovePoses[pose], -65, -65, p)
+          });
+        }
+
+        // Calm stationary woodblock rising sun rays (NO dizzying pinwheel spin!)
+        layers.push({
+          id: 1060, wx: 0, wy: -10, wz: 1260, alpha: ch1Alpha, jitterScale: 0.2, wide: true,
           draw: g => {
-            g.fillStyle = PaperAtlas.goldFoil.pattern;
-            const s = c.size;
-            if (c.shape === 0) g.fillRect(-s * 0.5, -s * 0.5, s, s * 0.8);
-            else if (c.shape === 1) { g.beginPath(); g.moveTo(0, -s * 0.7); g.lineTo(s * 0.55, 0); g.lineTo(0, s * 0.7); g.lineTo(-s * 0.55, 0); g.closePath(); g.fill(); }
-            else { g.beginPath(); g.moveTo(0, -s * 0.65); g.lineTo(s * 0.65, s * 0.55); g.lineTo(-s * 0.65, s * 0.55); g.closePath(); g.fill(); }
+            for (let i = 0; i < 24; i++) {
+              const a0 = (i / 24) * Math.PI * 2 + 0.06;
+              g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, 1500, a0, a0 + (Math.PI / 24) * 0.92); g.closePath();
+              g.fillStyle = i % 2 === 0 ? 'rgba(214, 152, 54, 0.14)' : 'rgba(186, 52, 40, 0.08)';
+              g.fill();
+            }
+            g.beginPath(); g.arc(0, 0, 215, 0, Math.PI * 2);
+            g.fillStyle = PaperAtlas.ochre.pattern; g.globalAlpha *= 0.72; g.fill();
           }
         });
-      }
 
-      layers.push({
-        id: 3030, wx: satX, wy: satY, wz: 5685, alpha: ch3Alpha,
-        scaleX: 1.24, scaleY: 1.24,
-        draw: (g, p) => drawDongfanghongFast(g, p, tObj)
-      });
-
-      layers.push({
-        id: 3050, wx: 0, wy: 565, wz: 6220, alpha: ch3Alpha,
-        scaleX: 1.68, scaleY: 1.45,
-        draw: (g, p) => drawSprite(g, Sprites.earthArc, -980, -210, p, true)
+        // Auspicious clouds framing sky & drifting softly outward at exit
+        const cloudDrift = smoothstep(3.8, 6.2, tCam) * 260;
+        layers.push({
+          id: 1065, wx: -560 - cloudDrift, wy: -245, wz: 1150, alpha: ch1Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.warmCloud, -310, -130, p)
+        });
+        layers.push({
+          id: 1066, wx: 570 + cloudDrift, wy: -200, wz: 1185, alpha: ch1Alpha, scaleX: -1, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.warmCloud, -310, -130, p)
+        });
       });
     }
 
     // =======================================================================
-    // CHAPTER 4: 1978–1990s · 春天的故事 (18s – 24s | World Z: 7580 – 8680)
+    // CHAPTER 2: 1950s–1960s · 工业奠基 (6s – 12s | Smooth Lateral Tracking Pan)
     // =======================================================================
-    const ch4Alpha = smoothstep(17.2, 18.5, tCam) * (1 - smoothstep(23.2, 24.5, tCam));
-    if (ch4Alpha > 0.01) {
-      const popUpScaleY = (startSec, dur = 1.45) => Math.max(0.02, easeOutBack(clamp((tObj - startSec) / dur, 0, 1)));
-      const horizonY = 300;
+    const ch2Alpha = smoothstep(5.0, 6.2, tCam) * (1 - smoothstep(11.3, 12.5, tCam));
+    if (ch2Alpha > 0.01) {
+      addStage(1, 2, (layers) => {
+        layers.push({
+          id: 2001, wx: -790, wy: 270, wz: 815, alpha: ch2Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.origamiMtnLeft, -490, -380, p)
+        });
+        layers.push({
+          id: 2002, wx: 810, wy: 275, wz: 835, alpha: ch2Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.origamiMtnRight, -490, -380, p)
+        });
+        layers.push({
+          id: 2008, wx: 180, wy: 292, wz: 955, alpha: ch2Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.trestleTrack, -1120, -26, p)
+        });
 
-      layers.push({
-        id: 4001, wx: Math.sin(tObj * 1.4) * 58, wy: 435, wz: 7620, alpha: ch4Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.waveFront, -1600, -54, p)
-      });
+        const locoProgress = clamp((tObj - 5.6) / 6.2, 0.04, 1.12);
+        const locoX = lerp(-660, 620, locoProgress);
+        const locoY = 232;
+        layers.push({
+          id: 2010, wx: locoX, wy: locoY, wz: 935, alpha: ch2Alpha,
+          draw: (g, p) => drawSteamLocomotiveFast(g, p, tObj)
+        });
+        layers.push({
+          id: 2012, wx: -690, wy: 145, wz: 895, alpha: ch2Alpha,
+          draw: (g, p) => drawSprite(g, Sprites.tunnelPortal, -210, -210, p)
+        });
 
-      const shipX = lerp(-680, 680, clamp((tObj - 18.0) / 6.0, 0, 1));
-      layers.push({
-        id: 4005, wx: shipX, wy: 332 + Math.sin(tObj * 2.8) * 9, wz: 7745, alpha: ch4Alpha,
-        rot: Math.cos(tObj * 2.8) * 0.035,
-        draw: (g, p) => drawSprite(g, Sprites.cargoShip, -270, -140, p)
-      });
-
-      layers.push({
-        id: 4008, wx: -Math.sin(tObj * 1.15 + 1.1) * 52, wy: 392, wz: 7860, alpha: ch4Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.waveRear, -1700, -54, p)
-      });
-
-      layers.push({
-        id: 4012, wx: 0, wy: horizonY + 12, wz: 7970, alpha: ch4Alpha,
-        draw: g => {
-          g.fillStyle = PaperAtlas.vellum.pattern; g.fillRect(-1800, 0, 3600, 360);
-          g.strokeStyle = 'rgba(72, 54, 34, 0.42)'; g.lineWidth = 3;
-          g.beginPath(); g.moveTo(-1800, 0); g.lineTo(1800, 0); g.stroke();
+        const chimneyX = locoX + 146, chimneyY = locoY - 165;
+        for (let pIdx = 0; pIdx < 10; pIdx++) {
+          const life = ((tObj * 0.62 + pIdx * 0.1) % 1.0);
+          const px = chimneyX - life * 460 + Math.sin(life * 6 + pIdx) * 20;
+          const py = chimneyY - life * 235 - Math.sqrt(life) * 60;
+          const puffScale = lerp(0.28, 1.12, life);
+          const pAlpha = smoothstep(0, 0.12, life) * (1 - smoothstep(0.68, 1.0, life));
+          const puffSprite = Sprites.cottonPuffs[pIdx % 4];
+          layers.push({
+            id: 2100 + pIdx, wx: px, wy: py, wz: 915 + pIdx * 3,
+            alpha: ch2Alpha * pAlpha * 0.95,
+            scaleX: puffScale, scaleY: puffScale,
+            rot: life * 0.45 * (pIdx % 2 === 0 ? 1 : -1),
+            draw: (g, p) => drawSprite(g, puffSprite, -110, -100, p)
+          });
         }
-      });
 
-      layers.push({
-        id: 4020, wx: -820, wy: horizonY, wz: 7920, alpha: ch4Alpha,
-        scaleY: popUpScaleY(17.9, 1.4), rot: -0.055,
-        draw: (g, p) => drawSprite(g, Sprites.stampSpring, -145, -356, p)
-      });
-      layers.push({
-        id: 4021, wx: 830, wy: horizonY, wz: 7940, alpha: ch4Alpha,
-        scaleY: popUpScaleY(18.3, 1.4), rot: 0.05,
-        draw: (g, p) => drawSprite(g, Sprites.stampHarbor, -145, -356, p)
-      });
-      layers.push({
-        id: 4025, wx: -410, wy: horizonY, wz: 8060, alpha: ch4Alpha,
-        scaleY: popUpScaleY(18.6, 1.45),
-        draw: (g, p) => drawSprite(g, Sprites.popupBlueprint, -260, -440, p)
-      });
-
-      layers.push({
-        id: 4030, wx: -560, wy: horizonY, wz: 8010, alpha: ch4Alpha, scaleY: popUpScaleY(18.9, 1.3),
-        draw: (g, p) => drawTowerCraneFast(g, p, tObj, 4030, 1)
-      });
-      layers.push({
-        id: 4031, wx: 105, wy: horizonY, wz: 8140, alpha: ch4Alpha, scaleY: popUpScaleY(19.2, 1.3),
-        draw: (g, p) => drawTowerCraneFast(g, p, tObj, 4031, -1)
-      });
-      layers.push({
-        id: 4032, wx: 620, wy: horizonY, wz: 8220, alpha: ch4Alpha, scaleY: popUpScaleY(19.5, 1.3),
-        draw: (g, p) => drawTowerCraneFast(g, p, tObj, 4032, -1)
-      });
-
-      layers.push({
-        id: 4040, wx: -440, wy: horizonY + 8, wz: 8260, alpha: ch4Alpha, scaleY: popUpScaleY(19.1, 1.55),
-        draw: (g, p) => drawSprite(g, Sprites.shenzhenSkyline, -430, -700, p)
-      });
-      layers.push({
-        id: 4045, wx: 440, wy: horizonY + 8, wz: 8360, alpha: ch4Alpha, scaleY: popUpScaleY(19.5, 1.6),
-        draw: (g, p) => drawSprite(g, Sprites.pudongSkyline, -460, -738, p)
-      });
-
-      layers.push({
-        id: 4055, wx: -10, wy: -155, wz: 8680, alpha: ch4Alpha,
-        draw: g => {
-          const rg = g.createRadialGradient(0, 0, 35, 0, 0, 380);
-          rg.addColorStop(0, 'rgba(255, 226, 146, 0.85)'); rg.addColorStop(0.55, 'rgba(242, 186, 86, 0.30)'); rg.addColorStop(1, 'rgba(242, 186, 86, 0)');
-          g.fillStyle = rg; g.beginPath(); g.arc(0, 0, 380, 0, Math.PI * 2); g.fill();
-          g.beginPath(); g.arc(0, 0, 138, 0, Math.PI * 2); g.fillStyle = PaperAtlas.goldFoil.pattern; g.fill();
-        }
+        // Stately steady gear rotation (calm industrial dignity!)
+        const gearAngle = tObj * 0.42;
+        layers.push({
+          id: 2030, wx: -590, wy: -185, wz: 1085, alpha: ch2Alpha, rot: gearAngle,
+          draw: (g, p) => drawSprite(g, Sprites.gearSteel, -Sprites.gearSteel.w * 0.5, -Sprites.gearSteel.h * 0.5, p)
+        });
+        layers.push({
+          id: 2031, wx: -245, wy: -330, wz: 1115, alpha: ch2Alpha, rot: -gearAngle * (16 / 12) + 0.24,
+          draw: (g, p) => drawSprite(g, Sprites.gearOchre, -Sprites.gearOchre.w * 0.5, -Sprites.gearOchre.h * 0.5, p)
+        });
+        layers.push({
+          id: 2032, wx: 605, wy: -195, wz: 1105, alpha: ch2Alpha, rot: -gearAngle * 0.85,
+          draw: (g, p) => drawSprite(g, Sprites.gearBlue, -Sprites.gearBlue.w * 0.5, -Sprites.gearBlue.h * 0.5, p)
+        });
+        layers.push({
+          id: 2033, wx: 270, wy: -55, wz: 1145, alpha: ch2Alpha, rot: gearAngle * 0.85 * (18 / 12) + 0.15,
+          draw: (g, p) => drawSprite(g, Sprites.gearRust, -Sprites.gearRust.w * 0.5, -Sprites.gearRust.h * 0.5, p)
+        });
+        layers.push({
+          id: 2040, wx: 0, wy: 240, wz: 1210, alpha: ch2Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.blueprintBridge, -1300, -180, p)
+        });
+        layers.push({
+          id: 2045, wx: 0, wy: -25, wz: 1300, alpha: ch2Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.blueprintFactory, -710, -310, p)
+        });
       });
     }
 
     // =======================================================================
-    // CHAPTER 5: 2008–2010s · 基建与速度 (24s – 30s | World Z: 9460 – 10680)
+    // CHAPTER 3: 1970 · 东方红一号 (12s – 18s | Page-Peel Reveal + Serene Orbit)
     // =======================================================================
-    const ch5Alpha = smoothstep(23.3, 24.6, tCam) * (1 - smoothstep(29.3, 30.6, tCam));
-    if (ch5Alpha > 0.01) {
-      layers.push({
-        id: 5002, wx: Math.sin(tObj * 1.3) * 40, wy: 470, wz: 9520, alpha: ch5Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.waveSea, -1700, -54, p)
-      });
-      layers.push({
-        id: 5010, wx: 0, wy: 155, wz: 9560, alpha: ch5Alpha,
-        rot: -0.025, scaleX: 1.12, scaleY: 1.12,
-        draw: (g, p) => drawSprite(g, Sprites.seaBridge, -1080, -340, p)
-      });
+    const ch3Alpha = smoothstep(11.1, 12.2, tCam) * (1 - smoothstep(17.1, 18.3, tCam));
+    if (ch3Alpha > 0.01) {
+      addStage(2, 3, (layers) => {
+        const peelProgress = easeInOutSine(smoothstep(11.4, 13.8, tObj));
+        const peelFade = 1 - smoothstep(13.4, 14.3, tCam);
+        if (peelFade > 0.01) {
+          layers.push({
+            id: 3001, wx: -440 - peelProgress * 560, wy: -120 - peelProgress * 560, wz: 770,
+            alpha: ch3Alpha * peelFade, rot: -peelProgress * 0.32, wide: true,
+            draw: (g, p) => drawSprite(g, Sprites.peelLeft, -490, -460, p)
+          });
+          layers.push({
+            id: 3002, wx: 440 + peelProgress * 560, wy: -120 - peelProgress * 560, wz: 770,
+            alpha: ch3Alpha * peelFade, rot: peelProgress * 0.32, wide: true,
+            draw: (g, p) => drawSprite(g, Sprites.peelRight, -490, -460, p)
+          });
+        }
 
-      const hsrPhase = (((tObj - 24.8) / 3.4) % 1 + 1) % 1;
-      const hsrX = lerp(-1280, 1580, hsrPhase);
-      const hsrY = 276 - (hsrX * Math.tan(0.025));
-      layers.push({
-        id: 5015, wx: hsrX, wy: hsrY, wz: 9515, alpha: ch5Alpha,
-        rot: -0.025, scaleX: 1.12, scaleY: 1.12,
-        draw: (g, p) => {
-          g.strokeStyle = 'rgba(255, 248, 232, 0.58)'; g.lineWidth = 3;
-          for (let i = 0; i < 4; i++) {
-            const ry = -48 + i * 16;
-            const len = 140 + ((i * 57) % 110) + Math.sin(tObj * 14 + i) * 28;
-            g.beginPath(); g.moveTo(-760, ry); g.lineTo(-760 - len, ry); g.stroke();
+        // Tranquil hand-drawn celestial dome (barely breathing drift, zero mandala spin!)
+        layers.push({
+          id: 3010, wx: 0, wy: -15, wz: 1050, alpha: ch3Alpha,
+          rot: tObj * 0.005, scaleX: 1.08, scaleY: 1.08, jitterScale: 0.3, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.starChartRing, -740, -740, p, true)
+        });
+        layers.push({
+          id: 3011, wx: 20, wy: -10, wz: 1260, alpha: ch3Alpha * 0.68,
+          rot: -tObj * 0.004 + 0.8, scaleX: 1.38, scaleY: 1.38, jitterScale: 0.25, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.starChartRing, -740, -740, p, true)
+        });
+
+        function orbitPoint(u) {
+          const p0 = [-940, 220], p1 = [-10, -320], p2 = [940, -145];
+          const inv = 1 - u;
+          return [
+            inv * inv * p0[0] + 2 * inv * u * p1[0] + u * u * p2[0],
+            inv * inv * p0[1] + 2 * inv * u * p1[1] + u * u * p2[1]
+          ];
+        }
+
+        layers.push({
+          id: 3020, wx: 0, wy: 0, wz: 985, alpha: ch3Alpha, jitterScale: 0.3, wide: true,
+          draw: g => {
+            g.strokeStyle = 'rgba(244, 214, 134, 0.74)'; g.lineWidth = 3.0;
+            g.setLineDash([18, 14]); g.lineDashOffset = -tObj * 26;
+            g.beginPath(); g.moveTo(-940, 220); g.quadraticCurveTo(-10, -320, 940, -145); g.stroke();
+            g.setLineDash([]);
           }
-          drawSprite(g, Sprites.fuxingTrain, -780, -88, p);
+        });
+
+        const satU = clamp((tObj - 11.8) / 6.2, 0.08, 0.94);
+        const [satX, satY] = orbitPoint(satU);
+
+        layers.push({
+          id: 3025, wx: satX, wy: satY, wz: 970, alpha: ch3Alpha, jitterScale: 0.3,
+          draw: g => {
+            g.setLineDash([16, 10]);
+            for (let w = 0; w < 4; w++) {
+              const p = ((tObj * 0.45 + w * 0.25) % 1.0);
+              const r = 75 + p * 390, a = (1 - p) * 0.78;
+              g.strokeStyle = w % 2 === 0
+                ? `rgba(245, 206, 114, ${a.toFixed(2)})`
+                : `rgba(230, 240, 250, ${(a * 0.8).toFixed(2)})`;
+              g.lineWidth = lerp(3.2, 1.2, p);
+              g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.stroke();
+            }
+            g.setLineDash([]);
+          }
+        });
+
+        for (const c of GOLD_CONFETTI) {
+          const cu = satU - c.lag;
+          if (cu < 0.01) continue;
+          const [cx0, cy0] = orbitPoint(cu);
+          const drift = c.lag * 2.1;
+          const wx = cx0 + c.spreadX * drift + Math.sin(tObj * 2.4 + c.id) * 12;
+          const wy = cy0 + c.spreadY * drift + Math.cos(tObj * 2.1 + c.id) * 12;
+          layers.push({
+            id: c.id, wx, wy, wz: 955,
+            rot: tObj * c.spinSpeed + c.id,
+            alpha: ch3Alpha * (1 - smoothstep(0.28, 0.44, c.lag)),
+            draw: g => {
+              g.fillStyle = PaperAtlas.goldFoil.pattern;
+              const s = c.size;
+              if (c.shape === 0) g.fillRect(-s * 0.5, -s * 0.5, s, s * 0.8);
+              else if (c.shape === 1) { g.beginPath(); g.moveTo(0, -s * 0.7); g.lineTo(s * 0.55, 0); g.lineTo(0, s * 0.7); g.lineTo(-s * 0.55, 0); g.closePath(); g.fill(); }
+              else { g.beginPath(); g.moveTo(0, -s * 0.65); g.lineTo(s * 0.65, s * 0.55); g.lineTo(-s * 0.65, s * 0.55); g.closePath(); g.fill(); }
+            }
+          });
         }
-      });
 
-      layers.push({
-        id: 5022, wx: 0, wy: 325, wz: 9880, alpha: ch5Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.viaduct, -1770, -24, p)
-      });
-      const hsr2X = lerp(1520, -1520, (((tObj - 24.4) / 4.1) % 1 + 1) % 1);
-      layers.push({
-        id: 5024, wx: hsr2X, wy: 315, wz: 9865, alpha: ch5Alpha,
-        scaleX: -0.62, scaleY: 0.62,
-        draw: (g, p) => drawSprite(g, Sprites.fuxingTrain, -780, -88, p)
-      });
+        layers.push({
+          id: 3030, wx: satX, wy: satY, wz: 940, alpha: ch3Alpha,
+          scaleX: 1.15, scaleY: 1.15,
+          draw: (g, p) => drawDongfanghongFast(g, p, tObj)
+        });
 
-      layers.push({
-        id: 5030, wx: -430, wy: 245, wz: 10040, alpha: ch5Alpha,
-        scaleX: 1.08, scaleY: 1.08,
-        draw: (g, p) => drawSprite(g, Sprites.birdsNest, -430, -310, p)
-      });
-      layers.push({
-        id: 5034, wx: 620, wy: 270, wz: 10120, alpha: ch5Alpha,
-        scaleX: 1.08, scaleY: 1.08,
-        draw: (g, p) => drawSprite(g, Sprites.modernSkyline, -300, -560, p)
-      });
-
-      layers.push({
-        id: 5038, wx: -180, wy: -45, wz: 10300, alpha: ch5Alpha,
-        draw: g => {
-          const sun = g.createRadialGradient(0, 0, 30, 0, 0, 720);
-          sun.addColorStop(0, 'rgba(255, 234, 168, 0.52)');
-          sun.addColorStop(0.5, 'rgba(246, 206, 128, 0.18)');
-          sun.addColorStop(1, 'rgba(246, 206, 128, 0)');
-          g.fillStyle = sun; g.beginPath(); g.arc(0, 0, 720, 0, Math.PI * 2); g.fill();
-        }
-      });
-
-      const mtnSlide = (tCam - 24) * 38;
-      layers.push({
-        id: 5040, wx: -mtnSlide, wy: 265, wz: 10360, alpha: ch5Alpha,
-        scaleX: 1.56, scaleY: 1.32,
-        draw: (g, p) => drawSprite(g, Sprites.greenMtnMid, -1700, -340, p)
-      });
-      layers.push({
-        id: 5042, wx: mtnSlide * 0.65, wy: 215, wz: 10640, alpha: ch5Alpha,
-        scaleX: 1.66, scaleY: 1.38,
-        draw: (g, p) => drawSprite(g, Sprites.greenMtnFar, -1700, -390, p)
+        layers.push({
+          id: 3050, wx: 0, wy: 510, wz: 1185, alpha: ch3Alpha,
+          scaleX: 1.55, scaleY: 1.35, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.earthArc, -980, -210, p, true)
+        });
       });
     }
 
     // =======================================================================
-    // CHAPTER 6: 2020s–至今 · 星辰大海与终章 (30s – 36s & living hold)
+    // CHAPTER 4: 1978–1990s · 春天的故事 (18s – 24s | Tilt-Down Pop-Up Book Stage)
+    // =======================================================================
+    const ch4Alpha = smoothstep(17.2, 18.4, tCam) * (1 - smoothstep(23.1, 24.3, tCam));
+    if (ch4Alpha > 0.01) {
+      addStage(3, 4, (layers) => {
+        const popUpScaleY = (startSec, dur = 1.45) => Math.max(0.02, easeOutBack(clamp((tObj - startSec) / dur, 0, 1)));
+        const horizonY = 285;
+
+        layers.push({
+          id: 4001, wx: Math.sin(tObj * 1.2) * 48, wy: 410, wz: 845, alpha: ch4Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.waveFront, -1600, -54, p)
+        });
+
+        const shipX = lerp(-660, 660, clamp((tObj - 18.0) / 6.0, 0, 1));
+        layers.push({
+          id: 4005, wx: shipX, wy: 318 + Math.sin(tObj * 2.4) * 7, wz: 900, alpha: ch4Alpha,
+          rot: Math.cos(tObj * 2.4) * 0.03,
+          draw: (g, p) => drawSprite(g, Sprites.cargoShip, -270, -140, p)
+        });
+
+        layers.push({
+          id: 4008, wx: -Math.sin(tObj * 1.05 + 1.1) * 44, wy: 375, wz: 955, alpha: ch4Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.waveRear, -1700, -54, p)
+        });
+
+        layers.push({
+          id: 4012, wx: 0, wy: horizonY + 12, wz: 1005, alpha: ch4Alpha, jitterScale: 0.35, wide: true,
+          draw: g => {
+            g.fillStyle = PaperAtlas.vellum.pattern; g.fillRect(-1800, 0, 3600, 360);
+            g.strokeStyle = 'rgba(72, 54, 34, 0.42)'; g.lineWidth = 3;
+            g.beginPath(); g.moveTo(-1800, 0); g.lineTo(1800, 0); g.stroke();
+          }
+        });
+
+        layers.push({
+          id: 4020, wx: -790, wy: horizonY, wz: 980, alpha: ch4Alpha,
+          scaleY: popUpScaleY(17.9, 1.4), rot: -0.05,
+          draw: (g, p) => drawSprite(g, Sprites.stampSpring, -145, -356, p)
+        });
+        layers.push({
+          id: 4021, wx: 795, wy: horizonY, wz: 990, alpha: ch4Alpha,
+          scaleY: popUpScaleY(18.3, 1.4), rot: 0.045,
+          draw: (g, p) => drawSprite(g, Sprites.stampHarbor, -145, -356, p)
+        });
+        layers.push({
+          id: 4025, wx: -395, wy: horizonY, wz: 1045, alpha: ch4Alpha,
+          scaleY: popUpScaleY(18.6, 1.45),
+          draw: (g, p) => drawSprite(g, Sprites.popupBlueprint, -260, -440, p)
+        });
+
+        layers.push({
+          id: 4030, wx: -535, wy: horizonY, wz: 1020, alpha: ch4Alpha, scaleY: popUpScaleY(18.9, 1.3),
+          draw: (g, p) => drawTowerCraneFast(g, p, tObj, 4030, 1)
+        });
+        layers.push({
+          id: 4031, wx: 100, wy: horizonY, wz: 1085, alpha: ch4Alpha, scaleY: popUpScaleY(19.2, 1.3),
+          draw: (g, p) => drawTowerCraneFast(g, p, tObj, 4031, -1)
+        });
+        layers.push({
+          id: 4032, wx: 595, wy: horizonY, wz: 1125, alpha: ch4Alpha, scaleY: popUpScaleY(19.5, 1.3),
+          draw: (g, p) => drawTowerCraneFast(g, p, tObj, 4032, -1)
+        });
+
+        layers.push({
+          id: 4040, wx: -420, wy: horizonY + 8, wz: 1145, alpha: ch4Alpha, scaleY: popUpScaleY(19.1, 1.55), wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.shenzhenSkyline, -430, -700, p)
+        });
+        layers.push({
+          id: 4045, wx: 425, wy: horizonY + 8, wz: 1185, alpha: ch4Alpha, scaleY: popUpScaleY(19.5, 1.6), wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.pudongSkyline, -460, -738, p)
+        });
+
+        layers.push({
+          id: 4055, wx: -10, wy: -145, wz: 1320, alpha: ch4Alpha, jitterScale: 0.3,
+          draw: g => {
+            const rg = g.createRadialGradient(0, 0, 35, 0, 0, 380);
+            rg.addColorStop(0, 'rgba(255, 226, 146, 0.85)'); rg.addColorStop(0.55, 'rgba(242, 186, 86, 0.30)'); rg.addColorStop(1, 'rgba(242, 186, 86, 0)');
+            g.fillStyle = rg; g.beginPath(); g.arc(0, 0, 380, 0, Math.PI * 2); g.fill();
+            g.beginPath(); g.arc(0, 0, 132, 0, Math.PI * 2); g.fillStyle = PaperAtlas.goldFoil.pattern; g.fill();
+          }
+        });
+      });
+    }
+
+    // =======================================================================
+    // CHAPTER 5: 2008–2010s · 基建与速度 (24s – 30s | Long-Scroll Lateral Pan)
+    // =======================================================================
+    const ch5Alpha = smoothstep(23.2, 24.4, tCam) * (1 - smoothstep(29.2, 30.5, tCam));
+    if (ch5Alpha > 0.01) {
+      addStage(4, 5, (layers) => {
+        layers.push({
+          id: 5002, wx: Math.sin(tObj * 1.1) * 34, wy: 455, wz: 880, alpha: ch5Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.waveSea, -1700, -54, p)
+        });
+        layers.push({
+          id: 5010, wx: 0, wy: 150, wz: 930, alpha: ch5Alpha,
+          rot: -0.025, scaleX: 1.12, scaleY: 1.12, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.seaBridge, -1080, -340, p)
+        });
+
+        const hsrPhase = (((tObj - 24.8) / 3.4) % 1 + 1) % 1;
+        const hsrX = lerp(-1280, 1580, hsrPhase);
+        const hsrY = 270 - (hsrX * Math.tan(0.025));
+        layers.push({
+          id: 5015, wx: hsrX, wy: hsrY, wz: 905, alpha: ch5Alpha,
+          rot: -0.025, scaleX: 1.12, scaleY: 1.12,
+          draw: (g, p) => {
+            g.strokeStyle = 'rgba(255, 248, 232, 0.58)'; g.lineWidth = 3;
+            for (let i = 0; i < 4; i++) {
+              const ry = -48 + i * 16;
+              const len = 140 + ((i * 57) % 110) + Math.sin(tObj * 14 + i) * 28;
+              g.beginPath(); g.moveTo(-760, ry); g.lineTo(-760 - len, ry); g.stroke();
+            }
+            drawSprite(g, Sprites.fuxingTrain, -780, -88, p);
+          }
+        });
+
+        layers.push({
+          id: 5022, wx: 0, wy: 315, wz: 1085, alpha: ch5Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.viaduct, -1770, -24, p)
+        });
+        const hsr2X = lerp(1520, -1520, (((tObj - 24.4) / 4.1) % 1 + 1) % 1);
+        layers.push({
+          id: 5024, wx: hsr2X, wy: 305, wz: 1075, alpha: ch5Alpha,
+          scaleX: -0.62, scaleY: 0.62,
+          draw: (g, p) => drawSprite(g, Sprites.fuxingTrain, -780, -88, p)
+        });
+
+        layers.push({
+          id: 5030, wx: -420, wy: 240, wz: 1165, alpha: ch5Alpha,
+          scaleX: 1.06, scaleY: 1.06, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.birdsNest, -430, -310, p)
+        });
+        layers.push({
+          id: 5034, wx: 605, wy: 265, wz: 1195, alpha: ch5Alpha,
+          scaleX: 1.06, scaleY: 1.06,
+          draw: (g, p) => drawSprite(g, Sprites.modernSkyline, -300, -560, p)
+        });
+
+        layers.push({
+          id: 5038, wx: -180, wy: -45, wz: 1270, alpha: ch5Alpha, jitterScale: 0.2,
+          draw: g => {
+            const sun = g.createRadialGradient(0, 0, 30, 0, 0, 720);
+            sun.addColorStop(0, 'rgba(255, 234, 168, 0.52)');
+            sun.addColorStop(0.5, 'rgba(246, 206, 128, 0.18)');
+            sun.addColorStop(1, 'rgba(246, 206, 128, 0)');
+            g.fillStyle = sun; g.beginPath(); g.arc(0, 0, 720, 0, Math.PI * 2); g.fill();
+          }
+        });
+
+        const mtnSlide = (tCam - 24) * 26;
+        layers.push({
+          id: 5040, wx: -mtnSlide, wy: 255, wz: 1310, alpha: ch5Alpha,
+          scaleX: 1.50, scaleY: 1.28, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.greenMtnMid, -1700, -340, p)
+        });
+        layers.push({
+          id: 5042, wx: mtnSlide * 0.55, wy: 205, wz: 1430, alpha: ch5Alpha,
+          scaleX: 1.58, scaleY: 1.34, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.greenMtnFar, -1700, -390, p)
+        });
+      });
+    }
+
+    // =======================================================================
+    // CHAPTER 6: 2020s–至今 · 星辰大海与终章 (30s – 36s | Ascent Through Clouds)
     // =======================================================================
     const ch6Alpha = smoothstep(29.3, 30.8, tCam);
     if (ch6Alpha > 0.01) {
-      const breakOut = easeInOutSine(smoothstep(29.4, 32.4, tCam));
-      const cloudFade = 1 - smoothstep(32.0, 33.4, tCam);
-      if (cloudFade > 0.01) {
-        layers.push({
-          id: 6001, wx: -560 - breakOut * 620, wy: -110 - breakOut * 160, wz: 10720,
-          alpha: ch6Alpha * cloudFade,
-          draw: (g, p) => drawSprite(g, Sprites.stormCloud, -390, -160, p)
-        });
-        layers.push({
-          id: 6002, wx: 560 + breakOut * 620, wy: -50 - breakOut * 130, wz: 10780,
-          alpha: ch6Alpha * cloudFade, scaleX: -1,
-          draw: (g, p) => drawSprite(g, Sprites.stormCloud, -390, -160, p)
-        });
-        layers.push({
-          id: 6003, wx: 0, wy: 260 + breakOut * 420, wz: 10860,
-          alpha: ch6Alpha * cloudFade, scaleX: 1.55, scaleY: 1.2,
-          draw: (g, p) => drawSprite(g, Sprites.stormCloud, -390, -160, p)
-        });
-      }
-
-      layers.push({
-        id: 6010, wx: 0, wy: -60, wz: 12720, alpha: ch6Alpha, rot: tObj * 0.014,
-        draw: g => {
-          [460, 680, 920, 1180, 1460].forEach((r, idx) => {
-            g.strokeStyle = idx % 2 === 0 ? 'rgba(240, 199, 110, 0.25)' : 'rgba(182, 212, 242, 0.17)';
-            g.lineWidth = idx % 2 === 0 ? 2.0 : 1.3;
-            g.setLineDash([56 + idx * 22, 30]);
-            g.beginPath(); g.arc(0, 140, r, Math.PI * 0.98, Math.PI * 2.02); g.stroke();
+      addStage(5, 6, (layers) => {
+        const breakOut = easeInOutSine(smoothstep(29.4, 32.2, tCam));
+        const cloudFade = 1 - smoothstep(31.8, 33.2, tCam);
+        if (cloudFade > 0.01) {
+          layers.push({
+            id: 6001, wx: -520 - breakOut * 620, wy: -95 - breakOut * 140, wz: 790,
+            alpha: ch6Alpha * cloudFade, wide: true,
+            draw: (g, p) => drawSprite(g, Sprites.stormCloud, -390, -160, p)
           });
-          g.setLineDash([]);
+          layers.push({
+            id: 6002, wx: 520 + breakOut * 620, wy: -45 - breakOut * 115, wz: 815,
+            alpha: ch6Alpha * cloudFade, scaleX: -1, wide: true,
+            draw: (g, p) => drawSprite(g, Sprites.stormCloud, -390, -160, p)
+          });
+          layers.push({
+            id: 6003, wx: 0, wy: 245 + breakOut * 380, wz: 845,
+            alpha: ch6Alpha * cloudFade, scaleX: 1.50, scaleY: 1.15, wide: true,
+            draw: (g, p) => drawSprite(g, Sprites.stormCloud, -390, -160, p)
+          });
         }
-      });
 
-      layers.push({
-        id: 6020, wx: 790, wy: -320, wz: 12380, alpha: ch6Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.paperMoon, -180, -180, p)
-      });
+        layers.push({
+          id: 6010, wx: 0, wy: -55, wz: 1350, alpha: ch6Alpha, rot: tObj * 0.004, jitterScale: 0.25, wide: true,
+          draw: g => {
+            [460, 680, 920, 1180, 1460].forEach((r, idx) => {
+              g.strokeStyle = idx % 2 === 0 ? 'rgba(240, 199, 110, 0.24)' : 'rgba(182, 212, 242, 0.16)';
+              g.lineWidth = idx % 2 === 0 ? 2.0 : 1.3;
+              g.setLineDash([56 + idx * 22, 30]);
+              g.beginPath(); g.arc(0, 140, r, Math.PI * 0.98, Math.PI * 2.02); g.stroke();
+            });
+            g.setLineDash([]);
+          }
+        });
 
-      const lunarOrbitAngle = tObj * 0.34 - 0.65;
-      layers.push({
-        id: 6022, wx: 790, wy: -320, wz: 12350, alpha: ch6Alpha,
-        draw: g => {
-          g.strokeStyle = 'rgba(242, 206, 122, 0.44)'; g.lineWidth = 1.8;
-          g.setLineDash([8, 8]);
-          g.beginPath(); g.ellipse(0, 0, 238, 126, -0.18, 0, Math.PI * 2); g.stroke();
-          g.setLineDash([]);
-        }
-      });
-      layers.push({
-        id: 6024,
-        wx: 790 + Math.cos(lunarOrbitAngle) * 238,
-        wy: -320 + Math.sin(lunarOrbitAngle) * 126,
-        wz: 12300, alpha: ch6Alpha, scaleX: 0.76, scaleY: 0.76,
-        rot: Math.sin(tObj * 0.6) * 0.12,
-        draw: (g, p) => drawSprite(g, Sprites.lunarProbe, -90, -75, p)
-      });
+        layers.push({
+          id: 6020, wx: 750, wy: -305, wz: 1180, alpha: ch6Alpha,
+          draw: (g, p) => drawSprite(g, Sprites.paperMoon, -180, -180, p)
+        });
 
-      const stOrbit = Math.sin((tObj - 30) * 0.24);
-      layers.push({
-        id: 6030, wx: -710 + stOrbit * 55, wy: -295 - Math.cos((tObj - 30) * 0.24) * 22,
-        wz: 12240, alpha: ch6Alpha, scaleX: 0.78, scaleY: 0.78,
-        rot: -0.16 + stOrbit * 0.04,
-        draw: (g, p) => drawSprite(g, Sprites.tiangong, -430, -220, p)
-      });
+        const lunarOrbitAngle = tObj * 0.28 - 0.65;
+        layers.push({
+          id: 6022, wx: 750, wy: -305, wz: 1165, alpha: ch6Alpha, jitterScale: 0.25,
+          draw: g => {
+            g.strokeStyle = 'rgba(242, 206, 122, 0.44)'; g.lineWidth = 1.8;
+            g.setLineDash([8, 8]);
+            g.beginPath(); g.ellipse(0, 0, 238, 126, -0.18, 0, Math.PI * 2); g.stroke();
+            g.setLineDash([]);
+          }
+        });
+        layers.push({
+          id: 6024,
+          wx: 750 + Math.cos(lunarOrbitAngle) * 238,
+          wy: -305 + Math.sin(lunarOrbitAngle) * 126,
+          wz: 1140, alpha: ch6Alpha, scaleX: 0.76, scaleY: 0.76,
+          rot: Math.sin(tObj * 0.5) * 0.1,
+          draw: (g, p) => drawSprite(g, Sprites.lunarProbe, -90, -75, p)
+        });
 
-      layers.push({
-        id: 6040, wx: 0, wy: 450, wz: 12540, alpha: ch6Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.epicRangeBack, -1800, -390, p)
-      });
-      layers.push({
-        id: 6042, wx: Math.sin(tObj * 0.22) * 18, wy: 495, wz: 12260, alpha: ch6Alpha,
-        draw: (g, p) => drawSprite(g, Sprites.epicRangeFront, -1800, -270, p)
-      });
+        const stOrbit = Math.sin((tObj - 30) * 0.2);
+        layers.push({
+          id: 6030, wx: -685 + stOrbit * 48, wy: -285 - Math.cos((tObj - 30) * 0.2) * 18,
+          wz: 1110, alpha: ch6Alpha, scaleX: 0.76, scaleY: 0.76,
+          rot: -0.16 + stOrbit * 0.035,
+          draw: (g, p) => drawSprite(g, Sprites.tiangong, -430, -220, p)
+        });
 
-      layers.push({
-        id: 6044, wx: -480 + Math.sin(tObj * 0.3) * 40, wy: 390, wz: 12180, alpha: ch6Alpha * 0.34,
-        draw: g => {
-          const mg = g.createRadialGradient(0, 0, 40, 0, 0, 620);
-          mg.addColorStop(0, 'rgba(220, 232, 236, 0.55)'); mg.addColorStop(0.55, 'rgba(182, 206, 218, 0.20)'); mg.addColorStop(1, 'rgba(182, 206, 218, 0)');
-          g.fillStyle = mg; g.beginPath(); g.ellipse(0, 0, 640, 95, 0, 0, Math.PI * 2); g.fill();
-        }
-      });
-      layers.push({
-        id: 6045, wx: 520 - Math.sin(tObj * 0.28) * 36, wy: 405, wz: 12160, alpha: ch6Alpha * 0.30,
-        draw: g => {
-          const mg = g.createRadialGradient(0, 0, 40, 0, 0, 580);
-          mg.addColorStop(0, 'rgba(220, 232, 236, 0.52)'); mg.addColorStop(0.55, 'rgba(182, 206, 218, 0.18)'); mg.addColorStop(1, 'rgba(182, 206, 218, 0)');
-          g.fillStyle = mg; g.beginPath(); g.ellipse(0, 0, 600, 88, 0, 0, Math.PI * 2); g.fill();
-        }
+        layers.push({
+          id: 6040, wx: 0, wy: 430, wz: 1240, alpha: ch6Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.epicRangeBack, -1800, -390, p)
+        });
+        layers.push({
+          id: 6042, wx: Math.sin(tObj * 0.18) * 14, wy: 470, wz: 1115, alpha: ch6Alpha, wide: true,
+          draw: (g, p) => drawSprite(g, Sprites.epicRangeFront, -1800, -270, p)
+        });
+
+        layers.push({
+          id: 6044, wx: -460 + Math.sin(tObj * 0.25) * 32, wy: 375, wz: 1080, alpha: ch6Alpha * 0.34, jitterScale: 0.25, wide: true,
+          draw: g => {
+            const mg = g.createRadialGradient(0, 0, 40, 0, 0, 620);
+            mg.addColorStop(0, 'rgba(220, 232, 236, 0.55)'); mg.addColorStop(0.55, 'rgba(182, 206, 218, 0.20)'); mg.addColorStop(1, 'rgba(182, 206, 218, 0)');
+            g.fillStyle = mg; g.beginPath(); g.ellipse(0, 0, 640, 95, 0, 0, Math.PI * 2); g.fill();
+          }
+        });
+        layers.push({
+          id: 6045, wx: 500 - Math.sin(tObj * 0.24) * 28, wy: 390, wz: 1070, alpha: ch6Alpha * 0.30, jitterScale: 0.25, wide: true,
+          draw: g => {
+            const mg = g.createRadialGradient(0, 0, 40, 0, 0, 580);
+            mg.addColorStop(0, 'rgba(220, 232, 236, 0.52)'); mg.addColorStop(0.55, 'rgba(182, 206, 218, 0.18)'); mg.addColorStop(1, 'rgba(182, 206, 218, 0)');
+            g.fillStyle = mg; g.beginPath(); g.ellipse(0, 0, 600, 88, 0, 0, Math.PI * 2); g.fill();
+          }
+        });
       });
     }
 
-    layers.sort((a, b) => b.wz - a.wz);
-    return layers;
+    return stages;
   }
 
   /* =========================================================================
@@ -3168,7 +3232,6 @@
     const breathScale = isHoldingEnd ? 0.65 : 1.0;
 
     const pal = samplePalette(tCam);
-    const cam = getCamera(tCam);
 
     // Apply backing resolution transform cleanly in 1920x1080 logical space
     ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
@@ -3176,10 +3239,10 @@
     // 1. Backdrop sky + stars
     drawBackdrop(pal, animFrame);
 
-    // 2. Depth-Sorted 2.5D Multiplane Papercraft Layers (100% pre-baked shadows & soft DOF!)
-    const layers = gatherSceneLayers(cam, tCam, tObj, animFrame);
+    // 2. Depth-Sorted 2.5D Multiplane Papercraft Stages (calm gallery & long-scroll choreography!)
+    const layers = gatherSceneLayers(tCam, tObj, animFrame);
     for (let i = 0; i < layers.length; i++) {
-      renderLayer(layers[i], cam, animFrame, breathScale);
+      renderLayer(layers[i], layers[i].cam, animFrame, breathScale);
     }
 
     // 3. Chapter Archival Letterpress Stamp & Grand Finale Title
