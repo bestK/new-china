@@ -115,6 +115,11 @@
     opacity: 1;
   }
 
+  .hud-btn.audio-pending {
+    color: #f0c76e;
+    opacity: 0.95;
+  }
+
   .hud-btn svg {
     width: 15px;
     height: 15px;
@@ -200,6 +205,8 @@
       </defs>
     </svg>
 
+    <audio id="epic-audio" src="assets/audio/paper-epic-dub.mp3" preload="auto"></audio>
+
     <div id="hud" aria-label="Playback controls">
       <button id="btn-play" class="hud-btn" title="Play / Pause (Space)" aria-label="Play or Pause">
         <svg id="icon-pause" viewBox="0 0 16 16"><rect x="3" y="2.5" width="3.5" height="11" rx="0.6"/><rect x="9.5" y="2.5" width="3.5" height="11" rx="0.6"/></svg>
@@ -210,6 +217,10 @@
       </button>
       <button id="btn-loop" class="hud-btn" title="Loop (L)" aria-label="Toggle Loop">
         <svg viewBox="0 0 16 16"><path d="M11.6 3.2L14 5.5l-2.4 2.3V6.3H5.2c-.8 0-1.4.6-1.4 1.4v.6H2.3v-.6a2.9 2.9 0 0 1 2.9-2.9h6.4V3.2zm-7.2 9.6L2 10.5l2.4-2.3v1.5h6.4c.8 0 1.4-.6 1.4-1.4v-.6h1.5v.6a2.9 2.9 0 0 1-2.9 2.9H4.4v1.6z"/></svg>
+      </button>
+      <button id="btn-mute" class="hud-btn" title="Mute / Unmute (M)" aria-label="Toggle Sound">
+        <svg id="icon-vol-on" viewBox="0 0 16 16"><path d="M2.2 6v4h2.6l3.4 3V3L4.8 6H2.2zm8.2-.4a3.4 3.4 0 0 1 0 4.8l-.9-.9a2.1 2.1 0 0 0 0-3l.9-.9zm1.8-1.8a5.9 5.9 0 0 1 0 8.4l-.9-.9a4.6 4.6 0 0 0 0-6.6l.9-.9z"/></svg>
+        <svg id="icon-vol-off" viewBox="0 0 16 16" style="display:none"><path d="M2.2 6v4h2.6l3.4 3V3L4.8 6H2.2zm11.9-.2l-.9-.9-1.7 1.7-1.7-1.7-.9.9L10.6 7.5 8.9 9.2l.9.9 1.7-1.7 1.7 1.7.9-.9-1.7-1.7 1.7-1.7z"/></svg>
       </button>
       <div id="timeline-wrap" role="slider" aria-label="Timeline" aria-valuemin="0" aria-valuemax="36" aria-valuenow="0">
         <div id="timeline-track">
@@ -3078,6 +3089,8 @@
   const state = {
     playing: !isInspectMode,
     loop: false,
+    muted: false,
+    audioUnlocked: false,
     time: isInspectMode ? clamp(forcedTimeParam, 0, TOTAL_DURATION) : 0,
     breathTime: isInspectMode ? clamp(forcedTimeParam, 0, TOTAL_DURATION) : 0,
     lastRaf: null,
@@ -3089,16 +3102,84 @@
     scrubbing: false
   };
 
+  const epicAudio = document.getElementById('epic-audio');
   const hudEl = document.getElementById('hud');
   const btnPlay = document.getElementById('btn-play');
   const iconPause = document.getElementById('icon-pause');
   const iconPlay = document.getElementById('icon-play');
   const btnReplay = document.getElementById('btn-replay');
   const btnLoop = document.getElementById('btn-loop');
+  const btnMute = document.getElementById('btn-mute');
+  const iconVolOn = document.getElementById('icon-vol-on');
+  const iconVolOff = document.getElementById('icon-vol-off');
   const timelineWrap = document.getElementById('timeline-wrap');
   const timelineFill = document.getElementById('timeline-fill');
   const timelineThumb = document.getElementById('timeline-thumb');
   const timecodeEl = document.getElementById('timecode');
+
+  function syncAudioUi() {
+    if (!btnMute) return;
+    const silent = state.muted || (!state.audioUnlocked && epicAudio && epicAudio.paused && state.playing);
+    iconVolOn.style.display = silent ? 'none' : 'block';
+    iconVolOff.style.display = silent ? 'block' : 'none';
+    btnMute.classList.toggle('audio-pending', !state.muted && !state.audioUnlocked && state.playing);
+    btnMute.setAttribute('aria-pressed', String(state.muted));
+  }
+
+  function syncAudioPlayback(forceSeek = false) {
+    if (isInspectMode || !epicAudio) return;
+    epicAudio.muted = state.muted;
+    if (state.playing && !state.scrubbing && state.time < TOTAL_DURATION - 0.04) {
+      if (epicAudio.readyState >= 1) {
+        const target = clamp(state.time, 0, Math.max(0, (epicAudio.duration || TOTAL_DURATION) - 0.03));
+        if (forceSeek || Math.abs((epicAudio.currentTime || 0) - target) > 0.22) {
+          try { epicAudio.currentTime = target; } catch (_) {}
+        }
+      }
+      if (epicAudio.paused) {
+        const p = epicAudio.play();
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
+            state.audioUnlocked = true;
+            syncAudioUi();
+          }).catch(() => {
+            state.audioUnlocked = false;
+            syncAudioUi();
+          });
+        }
+      }
+    } else if (!epicAudio.paused) {
+      epicAudio.pause();
+    }
+    syncAudioUi();
+  }
+
+  function unlockAudioFromGesture() {
+    if (isInspectMode || !epicAudio || state.audioUnlocked || state.muted) return;
+    syncAudioPlayback(true);
+  }
+
+  function toggleMute() {
+    if (!state.audioUnlocked && !state.muted && state.playing) {
+      syncAudioPlayback(true);
+      wakeHud();
+      return;
+    }
+    state.muted = !state.muted;
+    syncAudioPlayback(true);
+    wakeHud();
+  }
+
+  if (epicAudio) {
+    epicAudio.addEventListener('loadedmetadata', () => {
+      if (state.playing && !isInspectMode) syncAudioPlayback(true);
+    });
+    epicAudio.addEventListener('play', () => {
+      state.audioUnlocked = true;
+      syncAudioUi();
+    });
+    epicAudio.addEventListener('pause', syncAudioUi);
+  }
 
   let lastDisplayedSec = -1;
   function syncHud(force = false) {
@@ -3114,6 +3195,7 @@
     iconPause.style.display = state.playing ? 'block' : 'none';
     iconPlay.style.display = state.playing ? 'none' : 'block';
     btnLoop.classList.toggle('active', state.loop);
+    syncAudioUi();
   }
 
   function setHudVisibility(visible) {
@@ -3143,6 +3225,7 @@
     }
     state.playing = !state.playing;
     state.lastRaf = performance.now();
+    syncAudioPlayback(true);
     syncHud(true);
     wakeHud();
   }
@@ -3154,6 +3237,7 @@
     state.lastRaf = performance.now();
     state.lastCamFrame = -1;
     state.lastAnimFrame = -1;
+    syncAudioPlayback(true);
     syncHud(true);
     wakeHud();
   }
@@ -3183,6 +3267,9 @@
     state.breathTime = state.time;
     state.lastCamFrame = -1;
     state.lastAnimFrame = -1;
+    if (epicAudio && epicAudio.readyState >= 1) {
+      try { epicAudio.currentTime = clamp(state.time, 0, Math.max(0, (epicAudio.duration || TOTAL_DURATION) - 0.03)); } catch (_) {}
+    }
     syncHud(true);
     renderFrame(true);
   }
@@ -3190,9 +3277,11 @@
   btnPlay.addEventListener('click', togglePlay);
   btnReplay.addEventListener('click', replay);
   btnLoop.addEventListener('click', toggleLoop);
+  btnMute.addEventListener('click', toggleMute);
 
   timelineWrap.addEventListener('pointerdown', e => {
     state.scrubbing = true;
+    if (epicAudio && !epicAudio.paused) epicAudio.pause();
     timelineWrap.setPointerCapture(e.pointerId);
     seekToClientX(e.clientX);
     if (state.idleTimer) clearTimeout(state.idleTimer);
@@ -3204,16 +3293,23 @@
     if (state.scrubbing) {
       state.scrubbing = false;
       timelineWrap.releasePointerCapture(e.pointerId);
+      syncAudioPlayback(true);
       scheduleHudAutoHide();
     }
   });
 
+  window.addEventListener('pointerdown', e => {
+    if (e.target && e.target.closest && e.target.closest('#btn-mute')) return;
+    unlockAudioFromGesture();
+  }, { passive: true });
   window.addEventListener('mousemove', wakeHud, { passive: true });
   window.addEventListener('keydown', e => {
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
     else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); replay(); }
     else if (e.key === 'h' || e.key === 'H') { e.preventDefault(); toggleHudManual(); }
     else if (e.key === 'l' || e.key === 'L') { e.preventDefault(); toggleLoop(); }
+    else if (e.key === 'm' || e.key === 'M') { e.preventDefault(); toggleMute(); }
+    else { unlockAudioFromGesture(); }
   });
 
   function renderFrame(force = false) {
@@ -3272,13 +3368,20 @@
     if (state.playing && !state.scrubbing) {
       state.breathTime += dt;
       if (state.time < TOTAL_DURATION) {
-        state.time += dt;
-        if (state.time >= TOTAL_DURATION) {
+        const audioMaster = epicAudio && !epicAudio.paused && !epicAudio.ended && epicAudio.readyState >= 2 && Number.isFinite(epicAudio.duration) && epicAudio.duration > 1;
+        if (audioMaster) {
+          state.time = Math.min(TOTAL_DURATION, epicAudio.currentTime);
+        } else {
+          state.time += dt;
+        }
+        if (state.time >= TOTAL_DURATION - 0.015) {
           if (state.loop) {
-            state.time %= TOTAL_DURATION;
-            state.breathTime = state.time;
+            state.time = 0;
+            state.breathTime = 0;
+            syncAudioPlayback(true);
           } else {
             state.time = TOTAL_DURATION;
+            if (epicAudio && !epicAudio.paused) epicAudio.pause();
           }
         }
         if (state.hudVisible) syncHud(false);
@@ -3322,6 +3425,7 @@
   } else {
     setHudVisibility(true);
     scheduleHudAutoHide();
+    syncAudioPlayback(true);
     renderFrame(true);
     requestAnimationFrame(tick);
   }
