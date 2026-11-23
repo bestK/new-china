@@ -251,6 +251,7 @@
 
   let renderScale = 1.0;
   let perfDegraded = false;
+  let engineReady = false;
 
   function applyRenderScale(nextScale) {
     const s = Math.round(clamp(nextScale, 0.667, 1.0) * 100) / 100;
@@ -260,7 +261,10 @@
     canvas.height = Math.round(H * renderScale);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'low';
-    if (typeof state !== 'undefined') state.lastCamFrame = -1;
+    if (engineReady) {
+      state.lastCamFrame = -1;
+      renderFrame(true);
+    }
   }
 
   function fitStage() {
@@ -3228,6 +3232,7 @@
   fitStage();
   buildPaperAtlas();
   buildAllSprites();
+  engineReady = true;
   syncHud(true);
 
   // Expose lightweight performance probe when ?bench=1 is passed (zero runtime impact otherwise)
