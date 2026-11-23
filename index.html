@@ -1,0 +1,4126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A PAPER EPIC / 一纸山河</title>
+<style>
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000000;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: "Songti SC", "STSong", "Noto Serif SC", "SimSun", Georgia, "Times New Roman", serif;
+  }
+
+  body.cursor-hidden {
+    cursor: none;
+  }
+
+  #viewport {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000000;
+    overflow: hidden;
+  }
+
+  #stage {
+    position: relative;
+    width: 1920px;
+    height: 1080px;
+    flex: 0 0 auto;
+    overflow: hidden;
+    background: #14110e;
+    transform-origin: center center;
+    box-shadow: 0 0 80px rgba(0, 0, 0, 0.95);
+  }
+
+  #epic-canvas {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    display: block;
+  }
+
+  #paper-relief-overlay {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    pointer-events: none;
+    mix-blend-mode: soft-light;
+    opacity: 0.24;
+    transition: opacity 0.6s ease;
+  }
+
+  #lamp-vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 92% 86% at 32% 24%, rgba(255, 246, 224, 0.09) 0%, rgba(255, 244, 218, 0.0) 54%, rgba(8, 6, 4, 0.42) 100%);
+  }
+
+  /* Minimalist recording-friendly HUD (bottom-left) */
+  #hud {
+    position: absolute;
+    left: 34px;
+    bottom: 28px;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 15px 9px 12px;
+    border-radius: 3px;
+    background: rgba(14, 12, 10, 0.72);
+    border: 1px solid rgba(235, 214, 174, 0.22);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #efe5cf;
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 0.45s ease, transform 0.45s ease;
+    pointer-events: auto;
+  }
+
+  #hud.hud-hidden {
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+  }
+
+  .hud-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: #efe5cf;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 2px;
+    opacity: 0.86;
+    transition: opacity 0.2s ease, background 0.2s ease, color 0.2s ease;
+  }
+
+  .hud-btn:hover {
+    opacity: 1;
+    background: rgba(239, 229, 207, 0.12);
+  }
+
+  .hud-btn.active {
+    color: #f0c76e;
+    opacity: 1;
+  }
+
+  .hud-btn svg {
+    width: 15px;
+    height: 15px;
+    fill: currentColor;
+  }
+
+  #timeline-wrap {
+    position: relative;
+    width: 288px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+  }
+
+  #timeline-track {
+    position: relative;
+    width: 100%;
+    height: 3px;
+    background: rgba(239, 229, 207, 0.22);
+    border-radius: 2px;
+  }
+
+  #timeline-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #d89b42, #f2cc76);
+    border-radius: 2px;
+  }
+
+  #timeline-thumb {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    width: 9px;
+    height: 9px;
+    margin-left: -4.5px;
+    margin-top: -4.5px;
+    border-radius: 50%;
+    background: #f6e7c4;
+    box-shadow: 0 0 6px rgba(240, 199, 110, 0.7);
+  }
+
+  .chapter-tick {
+    position: absolute;
+    top: -4px;
+    width: 1px;
+    height: 11px;
+    background: rgba(239, 229, 207, 0.38);
+    pointer-events: none;
+  }
+
+  #timecode {
+    font-family: "Courier New", Consolas, monospace;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    color: rgba(239, 229, 207, 0.88);
+    min-width: 94px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+</head>
+<body>
+<div id="viewport">
+  <div id="stage">
+    <canvas id="epic-canvas" width="1920" height="1080"></canvas>
+
+    <!-- Static GPU-cached SVG paper relief texture (feTurbulence + feDiffuseLighting) -->
+    <svg id="paper-relief-overlay" viewBox="0 0 1920 1080" width="1920" height="1080" aria-hidden="true">
+      <defs>
+        <filter id="xuan-paper-relief" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
+          <feTurbulence type="fractalNoise" baseFrequency="0.038 0.044" numOctaves="4" seed="49" result="fiberNoise"/>
+          <feDiffuseLighting in="fiberNoise" lighting-color="#fff8e8" surfaceScale="1.9" diffuseConstant="1.08" result="rakingLight">
+            <feDistantLight azimuth="225" elevation="50"/>
+          </feDiffuseLighting>
+          <feColorMatrix type="saturate" values="0.16"/>
+        </filter>
+      </defs>
+      <rect width="1920" height="1080" filter="url(#xuan-paper-relief)"/>
+    </svg>
+
+    <div id="lamp-vignette"></div>
+
+    <div id="hud" aria-label="Playback controls">
+      <button id="btn-play" class="hud-btn" title="Play / Pause (Space)" aria-label="Play or Pause">
+        <svg id="icon-pause" viewBox="0 0 16 16"><rect x="3" y="2.5" width="3.5" height="11" rx="0.6"/><rect x="9.5" y="2.5" width="3.5" height="11" rx="0.6"/></svg>
+        <svg id="icon-play" viewBox="0 0 16 16" style="display:none"><polygon points="4,2.2 13.5,8 4,13.8"/></svg>
+      </button>
+      <button id="btn-replay" class="hud-btn" title="Replay (R)" aria-label="Replay">
+        <svg viewBox="0 0 16 16"><path d="M8 2.5a5.5 5.5 0 1 1-4.8 2.8l1.4.8A3.9 3.9 0 1 0 8 4.1V6.3L4.4 3.5 8 .8v1.7z"/></svg>
+      </button>
+      <button id="btn-loop" class="hud-btn" title="Loop (L)" aria-label="Toggle Loop">
+        <svg viewBox="0 0 16 16"><path d="M11.6 3.2L14 5.5l-2.4 2.3V6.3H5.2c-.8 0-1.4.6-1.4 1.4v.6H2.3v-.6a2.9 2.9 0 0 1 2.9-2.9h6.4V3.2zm-7.2 9.6L2 10.5l2.4-2.3v1.5h6.4c.8 0 1.4-.6 1.4-1.4v-.6h1.5v.6a2.9 2.9 0 0 1-2.9 2.9H4.4v1.6z"/></svg>
+      </button>
+      <div id="timeline-wrap" role="slider" aria-label="Timeline" aria-valuemin="0" aria-valuemax="36" aria-valuenow="0">
+        <div id="timeline-track">
+          <div id="timeline-fill"></div>
+          <div class="chapter-tick" style="left:16.666%"></div>
+          <div class="chapter-tick" style="left:33.333%"></div>
+          <div class="chapter-tick" style="left:50%"></div>
+          <div class="chapter-tick" style="left:66.666%"></div>
+          <div class="chapter-tick" style="left:83.333%"></div>
+          <div id="timeline-thumb"></div>
+        </div>
+      </div>
+      <div id="timecode">00:00 / 00:36</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* =========================================================================
+   * 1. STAGE SCALING & CONSTANTS
+   * ========================================================================= */
+  const W = 1920;
+  const H = 1080;
+  const CX = W * 0.5;
+  const CY = H * 0.5;
+  const FOCAL = 920;
+  const TOTAL_DURATION = 36.0;
+  const CAM_FPS = 24;
+  const STOP_FPS = 12;
+
+  const stageEl = document.getElementById('stage');
+  const canvas = document.getElementById('epic-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const reliefEl = document.getElementById('paper-relief-overlay');
+
+  function fitStage() {
+    const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
+    stageEl.style.transform = `scale(${scale})`;
+  }
+  window.addEventListener('resize', fitStage);
+  fitStage();
+
+  /* =========================================================================
+   * 2. DETERMINISTIC HASHING, MATH & COLOR UTILS
+   * ========================================================================= */
+  function hash32(a, b = 0, c = 0) {
+    let h = (a * 374761393 + b * 668265263 + c * 2147483647) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+  }
+
+  function seededRand(seed) {
+    let s = seed >>> 0;
+    return () => {
+      s = (s + 0x6D2B79F5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const smoothstep = (e0, e1, x) => {
+    const t = clamp((x - e0) / (e1 - e0), 0, 1);
+    return t * t * (3 - 2 * t);
+  };
+  const easeOutCubic = t => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
+  const easeInOutSine = t => 0.5 - 0.5 * Math.cos(Math.PI * clamp(t, 0, 1));
+  const easeOutBack = t => {
+    const c1 = 1.35, c3 = c1 + 1;
+    const x = clamp(t, 0, 1) - 1;
+    return 1 + c3 * x * x * x + c1 * x * x;
+  };
+
+  function lerpColor(c1, c2, t) {
+    const k = clamp(t, 0, 1);
+    const r = Math.round(lerp(c1[0], c2[0], k));
+    const g = Math.round(lerp(c1[1], c2[1], k));
+    const b = Math.round(lerp(c1[2], c2[2], k));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function rgba(c, a) {
+    return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  }
+
+  /* =========================================================================
+   * 3. PROCEDURAL PAPER TEXTURE ATLAS (OFFSCREEN CANVASES)
+   * ========================================================================= */
+  const PaperAtlas = {};
+
+  function makePatternCanvas(size, drawFn) {
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const g = c.getContext('2d');
+    drawFn(g, size);
+    return { canvas: c, pattern: ctx.createPattern(c, 'repeat') };
+  }
+
+  function addPaperFibers(g, size, rand, count, darkCol, lightCol, grainAlpha = 0.055) {
+    // Organic mottled grain
+    for (let i = 0; i < count * 2; i++) {
+      const x = rand() * size;
+      const y = rand() * size;
+      const r = 1 + rand() * 3.2;
+      g.fillStyle = rand() > 0.5 ? darkCol : lightCol;
+      g.globalAlpha = grainAlpha * (0.4 + rand() * 0.9);
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fill();
+    }
+    // Fine curving Xuan cellulose fibers
+    g.lineWidth = 0.75;
+    for (let i = 0; i < count; i++) {
+      const x = rand() * size;
+      const y = rand() * size;
+      const len = 6 + rand() * 18;
+      const ang = rand() * Math.PI * 2;
+      const cx1 = x + Math.cos(ang + 0.4) * len * 0.5;
+      const cy1 = y + Math.sin(ang + 0.4) * len * 0.5;
+      const x2 = x + Math.cos(ang) * len;
+      const y2 = y + Math.sin(ang) * len;
+      g.strokeStyle = rand() > 0.45 ? darkCol : lightCol;
+      g.globalAlpha = grainAlpha * (0.7 + rand() * 1.1);
+      g.beginPath();
+      g.moveTo(x, y);
+      g.quadraticCurveTo(cx1, cy1, x2, y2);
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+  }
+
+  function buildPaperAtlas() {
+    // 1. Xuan Ivory Paper (宣纸米黄)
+    PaperAtlas.xuan = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(101);
+      g.fillStyle = '#efe4cc';
+      g.fillRect(0, 0, s, s);
+      // Warm mottled tea-stain washes
+      for (let i = 0; i < 18; i++) {
+        const x = r() * s, y = r() * s, rad = 28 + r() * 64;
+        const grd = g.createRadialGradient(x, y, 2, x, y, rad);
+        grd.addColorStop(0, r() > 0.5 ? 'rgba(205,180,136,0.14)' : 'rgba(255,250,238,0.16)');
+        grd.addColorStop(1, 'rgba(239,228,204,0)');
+        g.fillStyle = grd;
+        g.fillRect(0, 0, s, s);
+      }
+      addPaperFibers(g, s, r, 160, '#8d7654', '#fffbf0', 0.085);
+    });
+
+    // 2. Aged 1949 Broadsheet Newsprint (泛黄旧报纹)
+    PaperAtlas.newsprint = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(1949);
+      g.fillStyle = '#dfd1b3';
+      g.fillRect(0, 0, s, s);
+      // Foxing patches
+      for (let i = 0; i < 22; i++) {
+        const x = r() * s, y = r() * s, rad = 18 + r() * 52;
+        const grd = g.createRadialGradient(x, y, 2, x, y, rad);
+        grd.addColorStop(0, 'rgba(164,132,84,0.16)');
+        grd.addColorStop(1, 'rgba(223,209,179,0)');
+        g.fillStyle = grd;
+        g.fillRect(0, 0, s, s);
+      }
+      // Subtle column rules & vintage micro-type texture
+      g.strokeStyle = 'rgba(54,44,34,0.14)';
+      g.lineWidth = 1;
+      for (let x = 16; x < s; x += 64) {
+        g.beginPath(); g.moveTo(x, 0); g.lineTo(x, s); g.stroke();
+      }
+      g.fillStyle = 'rgba(42,35,28,0.18)';
+      for (let col = 0; col < 4; col++) {
+        const cx0 = 22 + col * 64;
+        for (let row = 6; row < s; row += 8) {
+          if (r() < 0.14) continue;
+          const w = 36 + r() * 14;
+          g.fillRect(cx0, row, w, 2.2);
+        }
+      }
+      addPaperFibers(g, s, r, 150, '#6e5a3e', '#f5ebd6', 0.09);
+    });
+
+    // 3. Cinnabar Woodblock Red (朱砂红)
+    PaperAtlas.cinnabar = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(203);
+      g.fillStyle = '#b73226';
+      g.fillRect(0, 0, s, s);
+      // Woodblock brayer streaks
+      for (let i = 0; i < 90; i++) {
+        g.fillStyle = r() > 0.5 ? 'rgba(130,22,16,0.14)' : 'rgba(232,102,72,0.11)';
+        g.fillRect(0, r() * s, s, 1 + r() * 3.5);
+      }
+      addPaperFibers(g, s, r, 140, '#5d140e', '#f4c7a8', 0.08);
+    });
+
+    // 4. Harvest Ochre / Woodcut Gold (复古赭石麦金)
+    PaperAtlas.ochre = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(304);
+      g.fillStyle = '#d4993a';
+      g.fillRect(0, 0, s, s);
+      for (let i = 0; i < 45; i++) {
+        g.fillStyle = r() > 0.5 ? 'rgba(155,96,24,0.12)' : 'rgba(255,228,154,0.14)';
+        g.fillRect(r() * s, r() * s, 16 + r() * 48, 2 + r() * 5);
+      }
+      addPaperFibers(g, s, r, 130, '#7c4c12', '#fff0be', 0.085);
+    });
+
+    // 5. Prussian Cyanotype Blueprint (蓝图晒图肌理)
+    PaperAtlas.blueprint = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(1956);
+      g.fillStyle = '#1c3e5b';
+      g.fillRect(0, 0, s, s);
+      // Cyanotype chemical wash variation
+      for (let i = 0; i < 24; i++) {
+        const x = r() * s, y = r() * s, rad = 24 + r() * 70;
+        const grd = g.createRadialGradient(x, y, 2, x, y, rad);
+        grd.addColorStop(0, r() > 0.45 ? 'rgba(42,98,138,0.22)' : 'rgba(14,32,52,0.22)');
+        grd.addColorStop(1, 'rgba(28,62,91,0)');
+        g.fillStyle = grd;
+        g.fillRect(0, 0, s, s);
+      }
+      // Fine drafting grid
+      g.strokeStyle = 'rgba(218,236,248,0.11)';
+      g.lineWidth = 0.7;
+      for (let i = 0; i < s; i += 16) {
+        g.beginPath(); g.moveTo(i, 0); g.lineTo(i, s); g.stroke();
+        g.beginPath(); g.moveTo(0, i); g.lineTo(s, i); g.stroke();
+      }
+      g.strokeStyle = 'rgba(232,245,255,0.23)';
+      g.lineWidth = 1;
+      for (let i = 0; i < s; i += 64) {
+        g.beginPath(); g.moveTo(i, 0); g.lineTo(i, s); g.stroke();
+        g.beginPath(); g.moveTo(0, i); g.lineTo(s, i); g.stroke();
+      }
+      addPaperFibers(g, s, r, 130, '#0c1f30', '#cce5f5', 0.065);
+    });
+
+    // 6. Industrial Steel Slate Paper (钢铁灰)
+    PaperAtlas.steel = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(1958);
+      g.fillStyle = '#5b6873';
+      g.fillRect(0, 0, s, s);
+      for (let i = 0; i < 70; i++) {
+        g.fillStyle = r() > 0.5 ? 'rgba(30,38,46,0.14)' : 'rgba(180,194,206,0.12)';
+        g.fillRect(0, r() * s, s, 1 + r() * 3);
+      }
+      addPaperFibers(g, s, r, 130, '#2a333b', '#ced9e2', 0.075);
+    });
+
+    // 7. Oxide Industrial Rust Paper (红砖铁锈)
+    PaperAtlas.rust = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(1962);
+      g.fillStyle = '#994c34';
+      g.fillRect(0, 0, s, s);
+      addPaperFibers(g, s, r, 140, '#4f2114', '#e3a588', 0.09);
+    });
+
+    // 8. Raw Cotton Tissue Paper (棉纸白)
+    PaperAtlas.cotton = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(405);
+      g.fillStyle = '#f6f2e8';
+      g.fillRect(0, 0, s, s);
+      for (let i = 0; i < 24; i++) {
+        const x = r() * s, y = r() * s, rad = 16 + r() * 44;
+        const grd = g.createRadialGradient(x, y, 2, x, y, rad);
+        grd.addColorStop(0, 'rgba(218,208,190,0.18)');
+        grd.addColorStop(1, 'rgba(246,242,232,0)');
+        g.fillStyle = grd;
+        g.fillRect(0, 0, s, s);
+      }
+      addPaperFibers(g, s, r, 180, '#b5a892', '#ffffff', 0.09);
+    });
+
+    // 9. Celestial Star-Chart Indigo (星穹深蓝)
+    PaperAtlas.cosmic = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(1970);
+      g.fillStyle = '#0e1e36';
+      g.fillRect(0, 0, s, s);
+      for (let i = 0; i < 20; i++) {
+        const x = r() * s, y = r() * s, rad = 32 + r() * 75;
+        const grd = g.createRadialGradient(x, y, 2, x, y, rad);
+        grd.addColorStop(0, r() > 0.5 ? 'rgba(30,66,112,0.22)' : 'rgba(6,13,26,0.26)');
+        grd.addColorStop(1, 'rgba(14,30,54,0)');
+        g.fillStyle = grd;
+        g.fillRect(0, 0, s, s);
+      }
+      addPaperFibers(g, s, r, 120, '#050b16', '#4a709e', 0.065);
+    });
+
+    // 10. Hot-Stamped Gold Foil (烫金箔 — seamless tileable)
+    PaperAtlas.goldFoil = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(777);
+      const grd = g.createLinearGradient(0, 0, s, 0);
+      grd.addColorStop(0, '#dfb04c');
+      grd.addColorStop(0.25, '#f6dc91');
+      grd.addColorStop(0.5, '#cf9935');
+      grd.addColorStop(0.75, '#f8e3a1');
+      grd.addColorStop(1, '#dfb04c');
+      g.fillStyle = grd;
+      g.fillRect(0, 0, s, s);
+      for (let i = 0; i < 110; i++) {
+        g.strokeStyle = r() > 0.5 ? 'rgba(255,250,224,0.16)' : 'rgba(116,74,14,0.12)';
+        g.lineWidth = 0.8 + r() * 1.4;
+        const y = r() * s;
+        g.beginPath(); g.moveTo(0, y); g.lineTo(s, y); g.stroke();
+      }
+      addPaperFibers(g, s, r, 70, '#8d5b14', '#fff5d0', 0.06);
+    });
+
+    // 11. Brushed Silver Foil (银箔纸 — seamless tileable)
+    PaperAtlas.silverFoil = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(888);
+      const grd = g.createLinearGradient(0, 0, s, 0);
+      grd.addColorStop(0, '#cfd8e1');
+      grd.addColorStop(0.3, '#edf2f7');
+      grd.addColorStop(0.6, '#b7c4d0');
+      grd.addColorStop(0.85, '#e5ebf1');
+      grd.addColorStop(1, '#cfd8e1');
+      g.fillStyle = grd;
+      g.fillRect(0, 0, s, s);
+      addPaperFibers(g, s, r, 100, '#6e7c8a', '#ffffff', 0.075);
+    });
+
+    // 12. Celadon Mineral Ink-Wash (青绿山水纸 — seamless tileable)
+    PaperAtlas.celadon = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(2008);
+      g.fillStyle = '#2d685e';
+      g.fillRect(0, 0, s, s);
+      for (let i = 0; i < 34; i++) {
+        const x = r() * s, y = r() * s, rad = 22 + r() * 58;
+        const col = r() > 0.45 ? 'rgba(108,176,148,0.18)' : 'rgba(18,48,54,0.20)';
+        for (const ox of [-s, 0, s]) {
+          for (const oy of [-s, 0, s]) {
+            const rg = g.createRadialGradient(x + ox, y + oy, 2, x + ox, y + oy, rad);
+            rg.addColorStop(0, col);
+            rg.addColorStop(1, 'rgba(45,104,94,0)');
+            g.fillStyle = rg;
+            g.fillRect(0, 0, s, s);
+          }
+        }
+      }
+      addPaperFibers(g, s, r, 150, '#122e30', '#a9d7c3', 0.075);
+    });
+
+    // 13. Aged Architectural Vellum (泛黄建筑蓝图纸)
+    PaperAtlas.vellum = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(1978);
+      g.fillStyle = '#eadbbe';
+      g.fillRect(0, 0, s, s);
+      g.strokeStyle = 'rgba(54,108,112,0.15)';
+      g.lineWidth = 0.8;
+      for (let i = 0; i < s; i += 20) {
+        g.beginPath(); g.moveTo(i, 0); g.lineTo(i, s); g.stroke();
+        g.beginPath(); g.moveTo(0, i); g.lineTo(s, i); g.stroke();
+      }
+      g.strokeStyle = 'rgba(54,108,112,0.26)';
+      g.lineWidth = 1.1;
+      for (let i = 0; i < s; i += 80) {
+        g.beginPath(); g.moveTo(i, 0); g.lineTo(i, s); g.stroke();
+        g.beginPath(); g.moveTo(0, i); g.lineTo(s, i); g.stroke();
+      }
+      addPaperFibers(g, s, r, 140, '#8e744e', '#fff9eb', 0.08);
+    });
+
+    // 14. Deep Ink Mountain Indigo-Emerald (墨绿山河 — seamless tileable)
+    PaperAtlas.inkMountain = makePatternCanvas(256, (g, s) => {
+      const r = seededRand(2024);
+      g.fillStyle = '#193b47';
+      g.fillRect(0, 0, s, s);
+      for (let i = 0; i < 30; i++) {
+        const x = r() * s, y = r() * s, rad = 24 + r() * 62;
+        const col = r() > 0.5 ? 'rgba(56,114,116,0.18)' : 'rgba(9,22,36,0.24)';
+        for (const ox of [-s, 0, s]) {
+          for (const oy of [-s, 0, s]) {
+            const rg = g.createRadialGradient(x + ox, y + oy, 2, x + ox, y + oy, rad);
+            rg.addColorStop(0, col);
+            rg.addColorStop(1, 'rgba(25,59,71,0)');
+            g.fillStyle = rg;
+            g.fillRect(0, 0, s, s);
+          }
+        }
+      }
+      addPaperFibers(g, s, r, 150, '#091420', '#6ca4a2', 0.075);
+    });
+  }
+
+  /* =========================================================================
+   * 4. PAPERCRAFT DRAWING PRIMITIVES (DECKLED EDGES, PULP RIMS, ORIGAMI)
+   * ========================================================================= */
+  function buildDeckledPoints(pts, seed = 1, step = 10, amp = 2.6, closed = true) {
+    const out = [];
+    const n = pts.length;
+    const count = closed ? n : n - 1;
+    let idx = 0;
+    for (let i = 0; i < count; i++) {
+      const p0 = pts[i];
+      const p1 = pts[(i + 1) % n];
+      const dx = p1[0] - p0[0];
+      const dy = p1[1] - p0[1];
+      const dist = Math.hypot(dx, dy);
+      const segs = Math.max(1, Math.round(dist / step));
+      const nx = dist > 0.001 ? -dy / dist : 0;
+      const ny = dist > 0.001 ? dx / dist : 0;
+      for (let j = 0; j < segs; j++) {
+        const f = j / segs;
+        const j1 = (hash32(seed, idx++, 11) * 2 - 1) * amp;
+        const j2 = (hash32(seed, idx, 23) * 2 - 1) * amp * 0.45;
+        const edgePin = (j === 0) ? 0.3 : 1.0;
+        out.push([
+          p0[0] + dx * f + nx * (j1 + j2) * edgePin,
+          p0[1] + dy * f + ny * (j1 + j2) * edgePin
+        ]);
+      }
+    }
+    if (!closed && n > 0) out.push(pts[n - 1]);
+    return out;
+  }
+
+  function tracePoly(g, pts, closed = true) {
+    if (!pts.length) return;
+    g.beginPath();
+    g.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+    if (closed) g.closePath();
+  }
+
+  function fillDeckledPoly(g, pts, opts = {}) {
+    const {
+      fill = PaperAtlas.xuan.pattern,
+      pulpColor = 'rgba(247, 240, 224, 0.85)',
+      pulpWidth = 3.2,
+      rimLight = 'rgba(255, 249, 232, 0.28)',
+      strokeColor = null,
+      strokeWidth = 1.2,
+      seed = 7,
+      step = 11,
+      amp = 2.6,
+      tint = null,
+      innerShadow = true
+    } = opts;
+
+    const dPts = buildDeckledPoints(pts, seed, step, amp, true);
+
+    // 1. Raw torn paper pulp edge (slightly offset toward bottom-right tear reveal)
+    if (pulpWidth > 0) {
+      g.save();
+      tracePoly(g, dPts, true);
+      g.strokeStyle = pulpColor;
+      g.lineWidth = pulpWidth * 2;
+      g.lineJoin = 'round';
+      g.stroke();
+      g.restore();
+    }
+
+    // 2. Main textured paper fill
+    g.save();
+    tracePoly(g, dPts, true);
+    g.fillStyle = fill;
+    g.fill();
+
+    if (tint) {
+      g.fillStyle = tint;
+      g.fill();
+    }
+
+    // 3. Subtle warm desk-lamp directional shading inside cutout
+    if (innerShadow) {
+      g.clip();
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of dPts) {
+        if (p[0] < minX) minX = p[0];
+        if (p[1] < minY) minY = p[1];
+        if (p[0] > maxX) maxX = p[0];
+        if (p[1] > maxY) maxY = p[1];
+      }
+      const grd = g.createLinearGradient(minX, minY, maxX, maxY);
+      grd.addColorStop(0, 'rgba(255, 248, 228, 0.14)');
+      grd.addColorStop(0.5, 'rgba(255, 248, 228, 0.0)');
+      grd.addColorStop(1, 'rgba(18, 12, 8, 0.18)');
+      g.fillStyle = grd;
+      g.fillRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
+    }
+    g.restore();
+
+    // 4. Lamp-facing rim highlight
+    if (rimLight) {
+      g.save();
+      g.translate(-1, -1);
+      tracePoly(g, dPts, true);
+      g.strokeStyle = rimLight;
+      g.lineWidth = 1.1;
+      g.stroke();
+      g.restore();
+    }
+
+    if (strokeColor) {
+      g.save();
+      tracePoly(g, dPts, true);
+      g.strokeStyle = strokeColor;
+      g.lineWidth = strokeWidth;
+      g.stroke();
+      g.restore();
+    }
+    return dPts;
+  }
+
+  function makeSprite(w, h, drawFn) {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const g = c.getContext('2d');
+    drawFn(g, w, h);
+    return c;
+  }
+
+  /* =========================================================================
+   * 5. PRE-BAKED HIGH-DETAIL PAPERCRAFT SPRITES FOR ALL 6 CHAPTERS
+   * ========================================================================= */
+  const Sprites = {};
+
+  function buildAllSprites() {
+    // -----------------------------------------------------------------------
+    // CHAPTER 1 (1949): Torn Newspapers, Woodblock Tiananmen, Huabiao/Bridge, Clouds
+    // -----------------------------------------------------------------------
+    function buildTornNewspaper(side) {
+      return makeSprite(960, 1680, (g, w, h) => {
+        const isLeft = side === 'left';
+        const pts = isLeft
+          ? [[0, 0], [740, 0], [790, 220], [710, 480], [765, 760], [695, 1060], [785, 1360], [720, h], [0, h]]
+          : [[w, 0], [220, 0], [175, 250], [250, 520], [190, 820], [260, 1140], [185, 1420], [240, h], [w, h]];
+        const dPts = fillDeckledPoly(g, pts, {
+          fill: PaperAtlas.newsprint.pattern,
+          pulpColor: '#f6eedc',
+          pulpWidth: 4.5,
+          seed: isLeft ? 19491 : 19492,
+          step: 14,
+          amp: 6.5
+        });
+
+        g.save();
+        tracePoly(g, dPts, true);
+        g.clip();
+
+        // Vintage newspaper broadsheet masthead & columns near the torn inner margin
+        const baseX = isLeft ? 390 : 246;
+        const topY = 230;
+        g.strokeStyle = 'rgba(42, 32, 24, 0.55)';
+        g.lineWidth = 2.4;
+        g.beginPath(); g.moveTo(baseX, topY + 110); g.lineTo(baseX + 290, topY + 110); g.stroke();
+        g.lineWidth = 1.1;
+        g.beginPath(); g.moveTo(baseX, topY + 117); g.lineTo(baseX + 290, topY + 117); g.stroke();
+
+        // Masthead calligraphy headline
+        g.fillStyle = 'rgba(176, 44, 34, 0.72)';
+        g.font = 'bold 48px "Songti SC", "STSong", "SimSun", serif';
+        g.fillText(isLeft ? '一九四九' : '换了人间', baseX + 8, topY + 96);
+
+        g.fillStyle = 'rgba(38, 30, 22, 0.72)';
+        g.font = 'bold 26px "Songti SC", "STSong", "SimSun", serif';
+        g.fillText(isLeft ? '新纪元启幕' : '山河新生录', baseX + 12, topY + 162);
+
+        // Halftone woodblock inset box
+        g.fillStyle = 'rgba(60, 48, 36, 0.16)';
+        g.fillRect(baseX + 10, topY + 184, 220, 130);
+        g.strokeStyle = 'rgba(44, 34, 24, 0.42)';
+        g.strokeRect(baseX + 10, topY + 184, 220, 130);
+        g.strokeStyle = 'rgba(46, 36, 26, 0.36)';
+        for (let a = -0.2; a <= Math.PI + 0.2; a += 0.24) {
+          g.beginPath();
+          g.moveTo(baseX + 120, topY + 290);
+          g.lineTo(baseX + 120 + Math.cos(a) * 98, topY + 290 - Math.sin(a) * 85);
+          g.stroke();
+        }
+
+        // Dense vintage column print across full sheet width
+        const r = seededRand(isLeft ? 949 : 950);
+        g.fillStyle = 'rgba(42, 34, 26, 0.40)';
+        const startColX = isLeft ? 60 : 252;
+        for (let col = 0; col < 7; col++) {
+          const cx0 = startColX + col * 86;
+          for (let y = 90; y < h - 80; y += 13) {
+            if (cx0 >= baseX - 10 && cx0 <= baseX + 260 && y >= topY + 30 && y <= topY + 330) continue;
+            if (r() < 0.08) continue;
+            g.fillRect(cx0, y, 62 + r() * 12, 3.2);
+          }
+          g.strokeStyle = 'rgba(42, 34, 26, 0.22)';
+          g.beginPath(); g.moveTo(cx0 - 6, 80); g.lineTo(cx0 - 6, h - 80); g.stroke();
+        }
+
+        // Horizontal folded crease shadow across broadsheet
+        const crease = g.createLinearGradient(0, 790, 0, 855);
+        crease.addColorStop(0, 'rgba(30,20,10,0)');
+        crease.addColorStop(0.5, 'rgba(30,20,10,0.14)');
+        crease.addColorStop(1, 'rgba(255,248,230,0.10)');
+        g.fillStyle = crease;
+        g.fillRect(0, 790, w, 65);
+        g.restore();
+      });
+    }
+    Sprites.newsLeft = buildTornNewspaper('left');
+    Sprites.newsRight = buildTornNewspaper('right');
+
+    // Woodblock Tiananmen Gate Tower (天安门城楼)
+    Sprites.tiananmen = makeSprite(1360, 680, (g, w, h) => {
+      const mx = w * 0.5;
+      const baseY = 635;
+
+      // 1. Massive cinnabar fortress platform
+      fillDeckledPoly(g, [
+        [120, baseY], [156, 404], [1204, 404], [1240, baseY]
+      ], {
+        fill: PaperAtlas.cinnabar.pattern,
+        pulpColor: '#f3e7ce',
+        pulpWidth: 3.5,
+        seed: 19493,
+        step: 14,
+        amp: 2.2
+      });
+
+      // White marble parapet & trim
+      fillDeckledPoly(g, [
+        [142, 378], [1218, 378], [1214, 408], [146, 408]
+      ], {
+        fill: PaperAtlas.xuan.pattern,
+        pulpWidth: 1.5,
+        seed: 19494,
+        amp: 1.3
+      });
+      // Balustrade carved notches
+      g.fillStyle = 'rgba(130, 38, 28, 0.55)';
+      for (let x = 166; x < 1196; x += 26) {
+        g.fillRect(x, 386, 14, 13);
+      }
+
+      // 5 Arched Gateways (central tallest)
+      const arches = [
+        { x: mx - 305, w: 64, h: 122 },
+        { x: mx - 165, w: 72, h: 132 },
+        { x: mx,       w: 102, h: 162 },
+        { x: mx + 165, w: 72, h: 132 },
+        { x: mx + 305, w: 64, h: 122 }
+      ];
+      for (const a of arches) {
+        g.save();
+        g.beginPath();
+        g.moveTo(a.x - a.w * 0.5, baseY + 2);
+        g.lineTo(a.x - a.w * 0.5, baseY - a.h + a.w * 0.5);
+        g.arc(a.x, baseY - a.h + a.w * 0.5, a.w * 0.5, Math.PI, 0, false);
+        g.lineTo(a.x + a.w * 0.5, baseY + 2);
+        g.closePath();
+        // Arch stone surround
+        g.strokeStyle = '#eadec4';
+        g.lineWidth = 6;
+        g.stroke();
+        // Deep shadowed tunnel opening (cutaway depth)
+        const ag = g.createLinearGradient(a.x, baseY - a.h, a.x, baseY);
+        ag.addColorStop(0, '#1e1513');
+        ag.addColorStop(1, '#3b241c');
+        g.fillStyle = ag;
+        g.fill();
+        g.restore();
+      }
+
+      // Woodblock brick hatching on red wall
+      g.strokeStyle = 'rgba(58, 12, 8, 0.25)';
+      g.lineWidth = 1.2;
+      for (let y = 424; y < baseY - 12; y += 18) {
+        g.beginPath(); g.moveTo(160, y); g.lineTo(1200, y); g.stroke();
+      }
+
+      // Flanking slogan plaques (woodblock gold-bordered crimson panels)
+      for (const sx of [mx - 335, mx + 135]) {
+        g.fillStyle = '#9f231b';
+        g.fillRect(sx, 426, 200, 34);
+        g.strokeStyle = '#edd083';
+        g.lineWidth = 2;
+        g.strokeRect(sx, 426, 200, 34);
+      }
+
+      // Central crest plaque
+      g.save();
+      g.fillStyle = '#b92c21';
+      g.strokeStyle = '#f2cf75';
+      g.lineWidth = 3;
+      g.beginPath();
+      g.arc(mx, 444, 24, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.restore();
+
+      // 2. Upper Pavilion Hall (9 bays with crimson columns)
+      fillDeckledPoly(g, [
+        [278, 250], [1082, 250], [1082, 378], [278, 378]
+      ], {
+        fill: PaperAtlas.cinnabar.pattern,
+        pulpWidth: 2,
+        seed: 19495,
+        amp: 1.5,
+        tint: 'rgba(65,12,8,0.22)'
+      });
+
+      // Decorative green-gold dougong frieze under eaves
+      g.fillStyle = '#25544d';
+      g.fillRect(272, 252, 816, 26);
+      g.fillStyle = '#e5be63';
+      for (let x = 282; x < 1074; x += 22) {
+        g.fillRect(x, 258, 11, 12);
+      }
+      // Columns & gilded lattice doors
+      for (let i = 0; i <= 10; i++) {
+        const cx0 = 286 + i * 78.8;
+        g.fillStyle = '#c9382a';
+        g.fillRect(cx0 - 6, 276, 12, 102);
+        g.fillStyle = 'rgba(255,214,140,0.22)';
+        g.fillRect(cx0 - 6, 276, 3, 102);
+        if (i < 10) {
+          g.strokeStyle = 'rgba(240,198,108,0.45)';
+          g.lineWidth = 1.3;
+          g.strokeRect(cx0 + 12, 294, 54, 74);
+        }
+      }
+
+      // 3. Lower Imperial Upturned Roof
+      fillDeckledPoly(g, [
+        [182, 256], [262, 198], [1098, 198], [1178, 256],
+        [1110, 268], [250, 268]
+      ], {
+        fill: PaperAtlas.ochre.pattern,
+        pulpColor: '#f7eccf',
+        pulpWidth: 2.8,
+        seed: 19496,
+        amp: 1.8
+      });
+
+      // Upper Mezzanine Band
+      g.fillStyle = '#244d47';
+      g.fillRect(342, 168, 676, 34);
+      g.fillStyle = '#e8c166';
+      for (let x = 354; x < 1006; x += 26) g.fillRect(x, 176, 12, 14);
+
+      // 4. Grand Upper Double-Eave Roof (Xieshan roof)
+      fillDeckledPoly(g, [
+        [232, 176], [346, 102], [442, 68], [918, 68], [1014, 102], [1128, 176],
+        [1048, 186], [312, 186]
+      ], {
+        fill: PaperAtlas.ochre.pattern,
+        pulpColor: '#faf0d6',
+        pulpWidth: 3.2,
+        seed: 19497,
+        amp: 2.0
+      });
+
+      // Woodblock glazed tile ribs on both roofs
+      g.strokeStyle = 'rgba(92, 52, 14, 0.45)';
+      g.lineWidth = 1.6;
+      for (let x = 310; x <= 1050; x += 20) {
+        const tilt = (x - mx) * 0.14;
+        g.beginPath(); g.moveTo(x - tilt * 0.5, 74); g.lineTo(x + tilt * 0.25, 182); g.stroke();
+      }
+      for (let x = 240; x <= 1120; x += 22) {
+        const tilt = (x - mx) * 0.12;
+        g.beginPath(); g.moveTo(x - tilt * 0.4, 202); g.lineTo(x + tilt * 0.2, 264); g.stroke();
+      }
+
+      // Main roof ridge & Chiwen ornaments
+      g.fillStyle = '#f1cb6c';
+      g.fillRect(436, 56, 488, 14);
+      g.strokeStyle = '#6c3c10';
+      g.lineWidth = 2;
+      g.strokeRect(436, 56, 488, 14);
+      // Left & right chiwen finials
+      for (const fx of [432, 928]) {
+        g.beginPath();
+        g.moveTo(fx, 68);
+        g.lineTo(fx + (fx < mx ? -12 : 12), 42);
+        g.lineTo(fx + (fx < mx ? 14 : -14), 56);
+        g.closePath();
+        g.fillStyle = '#f2cf75';
+        g.fill();
+        g.stroke();
+      }
+    });
+
+    // Huabiao Marble Pillars & Golden Water Bridges foreground cutout
+    Sprites.huabiaoBridge = makeSprite(1540, 340, (g, w, h) => {
+      const mx = w * 0.5;
+      // 3 arched white marble bridges
+      for (const bx of [mx - 310, mx, mx + 310]) {
+        fillDeckledPoly(g, [
+          [bx - 135, 315], [bx - 108, 224], [bx - 42, 204], [bx + 42, 204],
+          [bx + 108, 224], [bx + 135, 315], [bx + 76, 315],
+          [bx + 52, 256], [bx, 244], [bx - 52, 256], [bx - 76, 315]
+        ], {
+          fill: PaperAtlas.xuan.pattern,
+          pulpColor: '#ffffff',
+          pulpWidth: 2.5,
+          seed: Math.round(bx),
+          amp: 1.5
+        });
+      }
+      // Left & Right White Marble Huabiao Columns
+      for (const hx of [270, w - 270]) {
+        // Pedestal
+        fillDeckledPoly(g, [
+          [hx - 36, 320], [hx - 26, 258], [hx + 26, 258], [hx + 36, 320]
+        ], { fill: PaperAtlas.cotton.pattern, pulpWidth: 2, seed: hx + 1, amp: 1.4 });
+        // Carved column shaft
+        fillDeckledPoly(g, [
+          [hx - 14, 260], [hx - 12, 62], [hx + 12, 62], [hx + 14, 260]
+        ], { fill: PaperAtlas.cotton.pattern, pulpWidth: 1.8, seed: hx + 2, amp: 1.2 });
+        // Cloud wing board
+        fillDeckledPoly(g, [
+          [hx - 54, 102], [hx - 32, 82], [hx + 32, 82], [hx + 54, 102],
+          [hx + 34, 118], [hx - 34, 118]
+        ], { fill: PaperAtlas.xuan.pattern, pulpWidth: 1.8, seed: hx + 3, amp: 1.8 });
+        // Capital & lion finial
+        fillDeckledPoly(g, [
+          [hx - 24, 66], [hx, 26], [hx + 24, 66]
+        ], { fill: PaperAtlas.xuan.pattern, pulpWidth: 1.5, seed: hx + 4, amp: 1.2 });
+        // Woodcut spiral dragon carving marks
+        g.strokeStyle = 'rgba(130, 112, 86, 0.45)';
+        g.lineWidth = 1.6;
+        for (let y = 128; y < 245; y += 22) {
+          g.beginPath(); g.moveTo(hx - 10, y); g.quadraticCurveTo(hx, y + 10, hx + 10, y - 2); g.stroke();
+        }
+      }
+    });
+
+    // Auspicious Hand-Torn Paper Cloud
+    function buildPaperCloud(w, h, fillPat, tint, seed) {
+      return makeSprite(w, h, (g) => {
+        const pts = [];
+        const cx0 = w * 0.5, cy0 = h * 0.58;
+        const lobes = [
+          [cx0 - w * 0.34, cy0 + h * 0.08, w * 0.14],
+          [cx0 - w * 0.22, cy0 - h * 0.08, w * 0.16],
+          [cx0 - w * 0.04, cy0 - h * 0.20, w * 0.19],
+          [cx0 + w * 0.15, cy0 - h * 0.11, w * 0.16],
+          [cx0 + w * 0.31, cy0 + h * 0.03, w * 0.14]
+        ];
+        // Build outer silhouette polygon around cloud domes
+        for (let i = 0; i <= 26; i++) {
+          const t = i / 26;
+          const x = lerp(w * 0.06, w * 0.94, t);
+          let minY = cy0 + h * 0.14;
+          for (const [lx, ly, lr] of lobes) {
+            const dx = x - lx;
+            if (Math.abs(dx) < lr) {
+              const yTop = ly - Math.sqrt(lr * lr - dx * dx) * 0.78;
+              if (yTop < minY) minY = yTop;
+            }
+          }
+          pts.push([x, minY]);
+        }
+        pts.push([w * 0.94, cy0 + h * 0.24]);
+        pts.push([w * 0.06, cy0 + h * 0.24]);
+
+        fillDeckledPoly(g, pts, {
+          fill: fillPat,
+          tint,
+          pulpColor: 'rgba(255, 250, 240, 0.9)',
+          pulpWidth: 3.5,
+          seed,
+          step: 10,
+          amp: 4.0
+        });
+      });
+    }
+    Sprites.warmCloud = buildPaperCloud(620, 260, PaperAtlas.cotton.pattern, 'rgba(238,214,174,0.22)', 19498);
+    Sprites.stormCloud = buildPaperCloud(780, 320, PaperAtlas.cotton.pattern, 'rgba(182,202,226,0.20)', 20201);
+
+    // -----------------------------------------------------------------------
+    // CHAPTER 2 (1950s-1960s): Origami Mountains, Tunnel, Steam Loco, Blueprint Factory & Bridge
+    // -----------------------------------------------------------------------
+    function buildOrigamiMountain(w, h, peaks, mainPat, shadowTint, seed) {
+      return makeSprite(w, h, (g) => {
+        // Draw each triangular origami peak with lit left facet & shaded right facet
+        for (let i = 0; i < peaks.length; i++) {
+          const [px, py, baseL, baseR] = peaks[i];
+          const ridgeX = px + (baseR - baseL) * 0.04;
+          // Left facet (facing top-left desk lamp)
+          fillDeckledPoly(g, [
+            [baseL, h - 10], [px, py], [ridgeX, h - 10]
+          ], {
+            fill: mainPat,
+            pulpColor: '#e9e2d2',
+            pulpWidth: 2.2,
+            tint: 'rgba(255, 248, 232, 0.14)',
+            seed: seed + i * 7,
+            amp: 2.0,
+            innerShadow: false
+          });
+          // Right facet (deep shadow crease)
+          fillDeckledPoly(g, [
+            [px, py], [baseR, h - 10], [ridgeX, h - 10]
+          ], {
+            fill: mainPat,
+            pulpColor: '#cdd8e2',
+            pulpWidth: 1.6,
+            tint: shadowTint,
+            seed: seed + i * 7 + 3,
+            amp: 2.0,
+            innerShadow: false
+          });
+          // Crisp origami fold crease line
+          g.strokeStyle = 'rgba(246, 240, 226, 0.45)';
+          g.lineWidth = 1.6;
+          g.beginPath(); g.moveTo(px, py); g.lineTo(ridgeX, h - 10); g.stroke();
+        }
+      });
+    }
+
+    Sprites.origamiMtnLeft = buildOrigamiMountain(
+      980, 760,
+      [
+        [240, 90, 20, 590],
+        [540, 210, 230, 880],
+        [750, 350, 520, 960]
+      ],
+      PaperAtlas.steel.pattern,
+      'rgba(18, 34, 52, 0.44)',
+      19520
+    );
+
+    Sprites.origamiMtnRight = buildOrigamiMountain(
+      980, 760,
+      [
+        [740, 70, 390, 960],
+        [440, 200, 120, 760],
+        [210, 360, 20, 490]
+      ],
+      PaperAtlas.blueprint.pattern,
+      'rgba(8, 22, 38, 0.48)',
+      19530
+    );
+
+    // Paper Mountain Tunnel Portal
+    Sprites.tunnelPortal = makeSprite(420, 420, (g) => {
+      // Mountain flank backing
+      fillDeckledPoly(g, [
+        [20, 405], [80, 95], [220, 28], [395, 165], [405, 405]
+      ], {
+        fill: PaperAtlas.steel.pattern,
+        tint: 'rgba(18, 28, 40, 0.25)',
+        pulpColor: '#e7e0ce',
+        pulpWidth: 3,
+        seed: 19540,
+        amp: 3.5
+      });
+      // Arched masonry portal ring
+      g.save();
+      g.beginPath();
+      g.moveTo(106, 405);
+      g.lineTo(106, 238);
+      g.arc(216, 238, 110, Math.PI, 0, false);
+      g.lineTo(326, 405);
+      g.closePath();
+      g.fillStyle = '#10151c';
+      g.fill();
+      g.lineWidth = 22;
+      g.strokeStyle = PaperAtlas.xuan.pattern;
+      g.stroke();
+      g.lineWidth = 2;
+      g.strokeStyle = 'rgba(40,48,58,0.55)';
+      g.stroke();
+      // Stone keystone ticks
+      for (let a = Math.PI; a <= Math.PI * 2; a += Math.PI / 10) {
+        g.beginPath();
+        g.moveTo(216 + Math.cos(a) * 100, 238 + Math.sin(a) * 100);
+        g.lineTo(216 + Math.cos(a) * 122, 238 + Math.sin(a) * 122);
+        g.stroke();
+      }
+      g.restore();
+    });
+
+    // Cyanotype Industrial Steelworks Complex (钢厂烟囱蓝图)
+    Sprites.blueprintFactory = makeSprite(1420, 620, (g, w, h) => {
+      // Backing torn blueprint sheet silhouette
+      const basePts = [
+        [30, 595], [30, 370], [120, 340], [135, 120], [185, 120], [198, 340],
+        [270, 340], [285, 76], [342, 76], [358, 330], [450, 310], [450, 210],
+        [560, 170], [660, 210], [660, 310], [740, 285], [760, 95], [810, 95],
+        [826, 290], [920, 260], [1040, 220], [1160, 260], [1180, 130], [1226, 130],
+        [1242, 320], [1385, 340], [1395, 595]
+      ];
+      const dPts = fillDeckledPoly(g, basePts, {
+        fill: PaperAtlas.blueprint.pattern,
+        pulpColor: '#e4eef6',
+        pulpWidth: 3.2,
+        seed: 19560,
+        step: 10,
+        amp: 2.2
+      });
+
+      g.save();
+      tracePoly(g, dPts, true);
+      g.clip();
+
+      // White-ink blueprint engineering details (blast furnaces, pipes, sawtooth roofs, dimensions)
+      g.strokeStyle = 'rgba(232, 246, 255, 0.72)';
+      g.lineWidth = 2;
+
+      // Chimney bands & industrial stripes
+      const stacks = [[160, 120, 52], [313, 76, 58], [785, 95, 52], [1203, 130, 48]];
+      for (const [sx, sy, sw] of stacks) {
+        for (let y = sy + 24; y < 340; y += 34) {
+          g.beginPath(); g.moveTo(sx - sw * 0.45, y); g.lineTo(sx + sw * 0.45, y); g.stroke();
+        }
+      }
+      // Blast furnace lattice dome & piping
+      g.strokeRect(468, 228, 174, 340);
+      for (let x = 468; x <= 642; x += 29) {
+        g.beginPath(); g.moveTo(x, 228); g.lineTo(x, 568); g.stroke();
+      }
+      for (let y = 260; y <= 540; y += 35) {
+        g.beginPath(); g.moveTo(468, y); g.lineTo(642, y); g.stroke();
+      }
+      // Curved industrial conduit pipes
+      g.lineWidth = 3.2;
+      g.beginPath(); g.moveTo(350, 260); g.quadraticCurveTo(410, 175, 470, 255); g.stroke();
+      g.beginPath(); g.moveTo(642, 275); g.quadraticCurveTo(705, 195, 760, 265); g.stroke();
+
+      // Sawtooth factory hall windows
+      g.fillStyle = 'rgba(242, 222, 162, 0.24)';
+      for (let x = 860; x < 1140; x += 48) {
+        g.fillRect(x, 345, 30, 54);
+        g.strokeRect(x, 345, 30, 54);
+      }
+
+      // Technical blueprint dimension lines & callout labels
+      g.strokeStyle = 'rgba(230, 245, 255, 0.55)';
+      g.lineWidth = 1.2;
+      g.setLineDash([7, 5]);
+      g.beginPath(); g.moveTo(90, 520); g.lineTo(1330, 520); g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = 'rgba(232, 246, 255, 0.72)';
+      g.font = '15px "Courier New", monospace';
+      g.fillText('NO.1 BLAST FURNACE  //  1956', 445, 508);
+      g.fillText('SPAN 1670M  ELEV +48.5', 935, 508);
+      g.restore();
+    });
+
+    // Cyanotype Yangtze Steel Truss Bridge (大桥钢架 — piers extend deep to anchor cleanly)
+    Sprites.blueprintBridge = makeSprite(2600, 780, (g, w, h) => {
+      // Solid lower deck & stone piers in blueprint paper
+      fillDeckledPoly(g, [
+        [20, 184], [w - 20, 184], [w - 20, 224], [20, 224]
+      ], { fill: PaperAtlas.blueprint.pattern, pulpColor: '#e3eff8', pulpWidth: 2, seed: 19571, amp: 1.4 });
+
+      // Tall solid bridge piers anchored all the way below frame
+      for (const px of [340, 820, 1300, 1780, 2260]) {
+        fillDeckledPoly(g, [
+          [px - 38, 220], [px - 30, 775], [px + 30, 775], [px + 38, 220]
+        ], { fill: PaperAtlas.steel.pattern, pulpWidth: 2, seed: px, amp: 1.5 });
+      }
+
+      // Continuous double-deck Warren steel truss frame
+      g.save();
+      g.strokeStyle = '#ddeef9';
+      g.lineWidth = 6;
+      g.lineJoin = 'bevel';
+      g.beginPath();
+      g.moveTo(40, 62); g.lineTo(w - 40, 62);
+      g.moveTo(40, 184); g.lineTo(w - 40, 184);
+      g.stroke();
+
+      const bay = 74;
+      g.lineWidth = 4.2;
+      for (let x = 40; x < w - 80; x += bay) {
+        g.beginPath();
+        g.moveTo(x, 184); g.lineTo(x, 62);
+        g.moveTo(x, 184); g.lineTo(x + bay, 62);
+        g.moveTo(x + bay, 184); g.lineTo(x, 62);
+        g.stroke();
+      }
+      g.strokeStyle = '#1b3d59';
+      g.lineWidth = 1.4;
+      g.beginPath(); g.moveTo(40, 62); g.lineTo(w - 40, 62); g.stroke();
+      g.restore();
+    });
+
+    // -----------------------------------------------------------------------
+    // CHAPTER 3 (1970): Peeling Paper Sky Veils & Star Chart Astrolabe Rings
+    // -----------------------------------------------------------------------
+    function buildPeelSheet(side) {
+      return makeSprite(980, 920, (g, w, h) => {
+        const isLeft = side === 'left';
+        const pts = isLeft
+          ? [[0, 0], [920, 0], [740, 240], [520, 480], [260, 710], [0, 880]]
+          : [[w, 0], [60, 0], [240, 240], [460, 480], [720, 710], [w, 880]];
+        fillDeckledPoly(g, pts, {
+          fill: PaperAtlas.blueprint.pattern,
+          pulpColor: '#e7eef4',
+          pulpWidth: 4,
+          seed: isLeft ? 19701 : 19702,
+          amp: 5.5
+        });
+        // Curled paper underside fold highlight (gives the unmistakable "peeling page" illusion!)
+        const curlPts = isLeft
+          ? [[880, 0], [920, 0], [740, 240], [520, 480], [260, 710], [0, 880], [0, 815], [225, 645], [470, 420], [685, 195]]
+          : [[100, 0], [60, 0], [240, 240], [460, 480], [720, 710], [w, 880], [w, 815], [755, 645], [510, 420], [295, 195]];
+        const grd = g.createLinearGradient(isLeft ? 340 : 640, 340, isLeft ? 540 : 440, 520);
+        grd.addColorStop(0, '#c8bfa9');
+        grd.addColorStop(0.5, '#f6eedc');
+        grd.addColorStop(1, '#a99e86');
+        g.save();
+        tracePoly(g, curlPts, true);
+        g.fillStyle = grd;
+        g.fill();
+        g.restore();
+      });
+    }
+    Sprites.peelLeft = buildPeelSheet('left');
+    Sprites.peelRight = buildPeelSheet('right');
+
+    // Star Chart Astrolabe Ring (手绘星图经纬穹顶)
+    Sprites.starChartRing = makeSprite(1480, 1480, (g, w, h) => {
+      const cx0 = w * 0.5, cy0 = h * 0.5;
+      // Outer celestial ring cut from indigo star-chart paper
+      g.save();
+      g.beginPath();
+      g.arc(cx0, cy0, 690, 0, Math.PI * 2);
+      g.arc(cx0, cy0, 625, 0, Math.PI * 2, true);
+      g.fillStyle = PaperAtlas.cosmic.pattern;
+      g.fill('evenodd');
+      g.strokeStyle = 'rgba(235, 196, 112, 0.55)';
+      g.lineWidth = 2.2;
+      g.beginPath(); g.arc(cx0, cy0, 690, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.arc(cx0, cy0, 625, 0, Math.PI * 2); g.stroke();
+
+      // Fine degree graduations around astrolabe ring
+      for (let i = 0; i < 144; i++) {
+        const a = (i / 144) * Math.PI * 2;
+        const inner = i % 6 === 0 ? 630 : 654;
+        g.strokeStyle = i % 6 === 0 ? 'rgba(244, 208, 128, 0.72)' : 'rgba(210, 224, 240, 0.32)';
+        g.lineWidth = i % 6 === 0 ? 2 : 1;
+        g.beginPath();
+        g.moveTo(cx0 + Math.cos(a) * inner, cy0 + Math.sin(a) * inner);
+        g.lineTo(cx0 + Math.cos(a) * 685, cy0 + Math.sin(a) * 685);
+        g.stroke();
+      }
+
+      // Latitude & Longitude celestial meridian web
+      g.strokeStyle = 'rgba(218, 202, 160, 0.25)';
+      g.lineWidth = 1.4;
+      for (const r of [240, 420, 540]) {
+        g.setLineDash(r === 420 ? [12, 8] : []);
+        g.beginPath(); g.arc(cx0, cy0, r, 0, Math.PI * 2); g.stroke();
+      }
+      g.setLineDash([]);
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI;
+        g.beginPath();
+        g.moveTo(cx0 + Math.cos(a) * 625, cy0 + Math.sin(a) * 625);
+        g.lineTo(cx0 - Math.cos(a) * 625, cy0 - Math.sin(a) * 625);
+        g.stroke();
+      }
+      // Elliptical ecliptic arcs
+      g.strokeStyle = 'rgba(240, 198, 108, 0.34)';
+      g.lineWidth = 1.8;
+      g.beginPath(); g.ellipse(cx0, cy0, 625, 290, -0.32, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.ellipse(cx0, cy0, 625, 210, 0.45, 0, Math.PI * 2); g.stroke();
+
+      // Big Dipper (北斗七星) hand-drawn constellation in upper-left quadrant
+      const dipper = [
+        [375, 420], [448, 398], [508, 434], [568, 476],
+        [578, 548], [662, 536], [656, 464]
+      ];
+      g.strokeStyle = 'rgba(244, 216, 146, 0.72)';
+      g.lineWidth = 1.6;
+      g.beginPath();
+      dipper.forEach(([x, y], idx) => idx === 0 ? g.moveTo(x, y) : g.lineTo(x, y));
+      g.stroke();
+      for (const [x, y] of dipper) {
+        g.fillStyle = '#fae19c';
+        g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill();
+      }
+      g.restore();
+    });
+
+    // Earth Horizon Arc (Chapter 3 bottom)
+    Sprites.earthArc = makeSprite(1960, 420, (g, w, h) => {
+      g.save();
+      g.beginPath();
+      g.arc(w * 0.5, 1920, 1840, Math.PI * 1.28, Math.PI * 1.72);
+      g.lineTo(w, h);
+      g.lineTo(0, h);
+      g.closePath();
+      g.fillStyle = PaperAtlas.cosmic.pattern;
+      g.fill();
+      // Atmospheric glowing golden-teal paper rim
+      g.beginPath();
+      g.arc(w * 0.5, 1920, 1840, Math.PI * 1.28, Math.PI * 1.72);
+      g.strokeStyle = '#e7be62';
+      g.lineWidth = 5;
+      g.stroke();
+      g.strokeStyle = 'rgba(130, 196, 224, 0.48)';
+      g.lineWidth = 16;
+      g.stroke();
+      g.restore();
+    });
+
+    // -----------------------------------------------------------------------
+    // CHAPTER 4 (1978-1990s): Vintage Postage Stamps, Blueprints, Pudong/Shenzhen Skylines, Cargo Ship
+    // -----------------------------------------------------------------------
+    function buildVintageStamp(accentColor, yearLabel, motifFn, seed) {
+      return makeSprite(290, 356, (g, w, h) => {
+        // Perforated scalloped postage stamp paper edge!
+        const pad = 16;
+        g.save();
+        g.beginPath();
+        g.rect(pad, pad, w - pad * 2, h - pad * 2);
+        // Punch semicircular perforations along all 4 edges
+        g.fillStyle = PaperAtlas.xuan.pattern;
+        g.fill();
+
+        g.globalCompositeOperation = 'destination-out';
+        const tooth = 18;
+        for (let x = pad; x <= w - pad; x += tooth) {
+          g.beginPath(); g.arc(x, pad, 5.2, 0, Math.PI * 2); g.fill();
+          g.beginPath(); g.arc(x, h - pad, 5.2, 0, Math.PI * 2); g.fill();
+        }
+        for (let y = pad; y <= h - pad; y += tooth) {
+          g.beginPath(); g.arc(pad, y, 5.2, 0, Math.PI * 2); g.fill();
+          g.beginPath(); g.arc(w - pad, y, 5.2, 0, Math.PI * 2); g.fill();
+        }
+        g.restore();
+
+        // Inner colored woodcut print frame
+        g.fillStyle = accentColor;
+        g.fillRect(36, 38, w - 72, h - 94);
+        g.strokeStyle = '#efe3c6';
+        g.lineWidth = 2;
+        g.strokeRect(42, 44, w - 84, h - 106);
+
+        // Motif illustration inside stamp
+        g.save();
+        g.beginPath();
+        g.rect(42, 44, w - 84, h - 106);
+        g.clip();
+        motifFn(g, w, h);
+        g.restore();
+
+        // Vintage stamp typography (bottom strip)
+        g.fillStyle = '#332820';
+        g.font = 'bold 20px "Songti SC", "STSong", serif';
+        g.fillText(yearLabel, 40, h - 30);
+        g.font = 'bold 22px "Courier New", monospace';
+        g.fillText('8分', w - 78, h - 30);
+
+        // Ink cancellation postmark circle
+        g.save();
+        g.strokeStyle = 'rgba(34, 28, 24, 0.45)';
+        g.lineWidth = 2;
+        g.beginPath(); g.arc(w - 64, 86, 36, 0, Math.PI * 2); g.stroke();
+        g.beginPath(); g.arc(w - 64, 86, 26, 0, Math.PI * 2); g.stroke();
+        for (let i = 0; i < 4; i++) {
+          g.beginPath();
+          g.moveTo(w - 130, 74 + i * 8);
+          g.quadraticCurveTo(w - 108, 68 + i * 8, w - 92, 74 + i * 8);
+          g.stroke();
+        }
+        g.restore();
+      });
+    }
+
+    Sprites.stampSpring = buildVintageStamp('#c24a38', '1978 · 改革', (g, w, h) => {
+      // Rising dawn sun + spring swallows + coastal waves
+      g.fillStyle = '#f2c86b';
+      g.beginPath(); g.arc(w * 0.5, 196, 62, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#2d6864';
+      g.fillRect(40, 198, w - 80, 80);
+      g.strokeStyle = '#efe4cc';
+      g.lineWidth = 2.5;
+      for (let y = 212; y < 268; y += 16) {
+        g.beginPath(); g.moveTo(46, y); g.quadraticCurveTo(w * 0.5, y - 10, w - 46, y); g.stroke();
+      }
+      // Woodcut swallows
+      g.fillStyle = '#241c18';
+      for (const [sx, sy, sc] of [[116, 118, 1], [174, 96, 0.85]]) {
+        g.beginPath();
+        g.moveTo(sx - 24 * sc, sy);
+        g.quadraticCurveTo(sx - 6 * sc, sy - 14 * sc, sx, sy - 2 * sc);
+        g.quadraticCurveTo(sx + 8 * sc, sy - 14 * sc, sx + 24 * sc, sy - 4 * sc);
+        g.quadraticCurveTo(sx + 6 * sc, sy + 2 * sc, sx, sy + 8 * sc);
+        g.closePath();
+        g.fill();
+      }
+    }, 19781);
+
+    Sprites.stampHarbor = buildVintageStamp('#2f6e64', '1984 · 开放', (g, w, h) => {
+      // Stylized coastal crane & palm & golden horizon
+      g.fillStyle = '#ebba58';
+      g.fillRect(40, 44, w - 80, 128);
+      g.fillStyle = '#1e4b52';
+      g.beginPath();
+      g.moveTo(40, 178); g.lineTo(95, 130); g.lineTo(158, 178); g.lineTo(250, 178);
+      g.lineTo(250, 265); g.lineTo(40, 265); g.closePath();
+      g.fill();
+      // Port gantry silhouette
+      g.strokeStyle = '#f5ebd6';
+      g.lineWidth = 4;
+      g.strokeRect(140, 96, 54, 82);
+      g.beginPath(); g.moveTo(116, 108); g.lineTo(222, 108); g.stroke();
+    }, 19841);
+
+    // Yellowed Architectural Pop-Up Blueprint Sheet
+    Sprites.popupBlueprint = makeSprite(520, 440, (g, w, h) => {
+      fillDeckledPoly(g, [
+        [18, 22], [502, 22], [502, 426], [18, 426]
+      ], {
+        fill: PaperAtlas.vellum.pattern,
+        pulpColor: '#faf3e3',
+        pulpWidth: 3,
+        seed: 19881,
+        amp: 2.8
+      });
+      g.strokeStyle = 'rgba(38, 88, 94, 0.72)';
+      g.lineWidth = 2;
+      g.strokeRect(36, 40, w - 72, h - 80);
+      // Elevation drawing of modern towers inside blueprint
+      const towers = [[82, 140, 74, 240], [180, 78, 92, 302], [296, 118, 78, 262], [392, 180, 62, 200]];
+      for (const [tx, ty, tw, th] of towers) {
+        g.strokeRect(tx, ty, tw, th);
+        for (let y = ty + 20; y < ty + th; y += 22) {
+          g.beginPath(); g.moveTo(tx + 6, y); g.lineTo(tx + tw - 6, y); g.stroke();
+        }
+      }
+      g.fillStyle = 'rgba(38, 88, 94, 0.75)';
+      g.font = 'bold 14px "Courier New", monospace';
+      g.fillText('SEZ MASTER PLAN // ELEVATION 1:500', 52, 392);
+    });
+
+    // Pudong Lujiazui Skyline Cutout (东方明珠 & 陆家嘴天际线)
+    Sprites.pudongSkyline = makeSprite(920, 760, (g, w, h) => {
+      const base = 735;
+      // Surrounding blueprint-gold glass towers
+      const blocks = [
+        { x: 55,  w: 112, h: 360, pat: PaperAtlas.vellum.pattern, tint: 'rgba(46,106,110,0.22)' },
+        { x: 185, w: 125, h: 495, pat: PaperAtlas.blueprint.pattern, tint: 'rgba(232,178,86,0.16)' },
+        { x: 600, w: 116, h: 520, pat: PaperAtlas.vellum.pattern, tint: 'rgba(218,162,72,0.18)' },
+        { x: 735, w: 128, h: 410, pat: PaperAtlas.steel.pattern, tint: 'rgba(46,106,110,0.28)' }
+      ];
+      for (const b of blocks) {
+        fillDeckledPoly(g, [
+          [b.x, base], [b.x, base - b.h], [b.x + b.w, base - b.h], [b.x + b.w, base]
+        ], { fill: b.pat, tint: b.tint, pulpWidth: 2.5, seed: b.x, amp: 1.8 });
+        // Architectural window grid
+        g.fillStyle = 'rgba(255, 232, 168, 0.42)';
+        for (let y = base - b.h + 24; y < base - 24; y += 26) {
+          for (let x = b.x + 14; x < b.x + b.w - 16; x += 22) {
+            g.fillRect(x, y, 12, 14);
+          }
+        }
+      }
+
+      // Jin Mao Pagoda-Stepped Tower (金茂大厦) at x=610
+      const jx = 658;
+      for (let tier = 0; tier < 6; tier++) {
+        const tw = 114 - tier * 14;
+        const ty = base - 160 - tier * 76;
+        fillDeckledPoly(g, [
+          [jx - tw * 0.5, ty + 80], [jx - tw * 0.46, ty], [jx + tw * 0.46, ty], [jx + tw * 0.5, ty + 80]
+        ], { fill: PaperAtlas.goldFoil.pattern, tint: 'rgba(46,88,92,0.34)', pulpWidth: 1.6, seed: 658 + tier, amp: 1.2 });
+      }
+      g.strokeStyle = '#f2d07e';
+      g.lineWidth = 4;
+      g.beginPath(); g.moveTo(jx, base - 538); g.lineTo(jx, base - 655); g.stroke();
+
+      // Iconic Oriental Pearl Tower (东方明珠) at x=450
+      const px = 452;
+      // Tripod leaning legs
+      g.strokeStyle = '#eae0c6';
+      g.lineWidth = 14;
+      g.beginPath();
+      g.moveTo(px - 108, base); g.lineTo(px - 28, base - 210);
+      g.moveTo(px + 108, base); g.lineTo(px + 28, base - 210);
+      g.stroke();
+      // Main twin cylindrical columns
+      fillDeckledPoly(g, [
+        [px - 28, base], [px - 20, base - 530], [px + 20, base - 530], [px + 28, base]
+      ], { fill: PaperAtlas.vellum.pattern, pulpWidth: 2, seed: 452, amp: 1.2 });
+      // Spire antenna
+      g.strokeStyle = '#f4e6c6';
+      g.lineWidth = 6;
+      g.beginPath(); g.moveTo(px, base - 525); g.lineTo(px, 34); g.stroke();
+      // 3 Iconic Spheres (lower large, upper medium, space module small)
+      const spheres = [[px, base - 225, 58], [px, base - 455, 42], [px, base - 556, 22]];
+      for (const [sx, sy, sr] of spheres) {
+        g.save();
+        g.beginPath(); g.arc(sx, sy, sr, 0, Math.PI * 2);
+        g.fillStyle = PaperAtlas.cinnabar.pattern;
+        g.fill();
+        const sg = g.createRadialGradient(sx - sr * 0.35, sy - sr * 0.35, sr * 0.1, sx, sy, sr);
+        sg.addColorStop(0, 'rgba(255, 224, 180, 0.55)');
+        sg.addColorStop(0.55, 'rgba(184, 50, 39, 0.12)');
+        sg.addColorStop(1, 'rgba(30, 12, 16, 0.45)');
+        g.fillStyle = sg;
+        g.fill();
+        g.strokeStyle = '#f5e8cc';
+        g.lineWidth = 3;
+        g.stroke();
+        g.restore();
+      }
+    });
+
+    // Shenzhen Early SEZ Skyline Cutout (深圳天际线 - 地王双塔等)
+    Sprites.shenzhenSkyline = makeSprite(860, 720, (g, w, h) => {
+      const base = 695;
+      const bldgs = [
+        [45,  104, 340, PaperAtlas.vellum.pattern, 'rgba(218,162,72,0.18)'],
+        [165, 118, 430, PaperAtlas.blueprint.pattern, 'rgba(46,120,112,0.22)'],
+        [305, 136, 540, PaperAtlas.steel.pattern, 'rgba(24,62,78,0.25)'], // Diwang base
+        [462, 114, 460, PaperAtlas.vellum.pattern, 'rgba(46,106,110,0.20)'],
+        [595, 108, 390, PaperAtlas.ochre.pattern, 'rgba(40,68,72,0.25)'],
+        [720, 105, 310, PaperAtlas.blueprint.pattern, 'rgba(232,178,86,0.14)']
+      ];
+      for (const [bx, bw, bh, pat, tint] of bldgs) {
+        fillDeckledPoly(g, [
+          [bx, base], [bx, base - bh], [bx + bw, base - bh], [bx + bw, base]
+        ], { fill: pat, tint, pulpWidth: 2.4, seed: bx + 90, amp: 1.8 });
+        // Illuminated warm dawn windows
+        g.fillStyle = 'rgba(255, 230, 164, 0.46)';
+        for (let y = base - bh + 22; y < base - 22; y += 24) {
+          for (let x = bx + 14; x < bx + bw - 16; x += 20) {
+            g.fillRect(x, y, 10, 12);
+          }
+        }
+      }
+      // Diwang Twin Spires (地王大厦双尖顶)
+      g.strokeStyle = '#f3e5c4';
+      g.lineWidth = 5;
+      g.beginPath();
+      g.moveTo(340, base - 540); g.lineTo(340, base - 665);
+      g.moveTo(405, base - 540); g.lineTo(405, base - 665);
+      g.stroke();
+    });
+
+    // Layered Paper Container Cargo Ship (货轮)
+    Sprites.cargoShip = makeSprite(540, 210, (g, w, h) => {
+      // Hull
+      fillDeckledPoly(g, [
+        [24, 132], [516, 132], [472, 195], [56, 195]
+      ], { fill: PaperAtlas.cinnabar.pattern, tint: 'rgba(40,12,12,0.32)', pulpWidth: 2.5, seed: 19891, amp: 1.8 });
+      // White upper bridge superstructure
+      fillDeckledPoly(g, [
+        [80, 132], [80, 56], [156, 56], [166, 132]
+      ], { fill: PaperAtlas.cotton.pattern, pulpWidth: 2, seed: 19892, amp: 1.4 });
+      g.fillStyle = '#244b54';
+      g.fillRect(92, 68, 52, 16);
+      // Funnel
+      fillDeckledPoly(g, [
+        [96, 56], [102, 24], [134, 24], [138, 56]
+      ], { fill: PaperAtlas.ochre.pattern, pulpWidth: 1.4, seed: 19893, amp: 1.1 });
+      // Stacked colorful paper shipping containers
+      const cols = [PaperAtlas.blueprint.pattern, PaperAtlas.ochre.pattern, PaperAtlas.cinnabar.pattern, PaperAtlas.celadon.pattern];
+      for (let row = 0; row < 2; row++) {
+        for (let col = 0; col < 5; col++) {
+          const cx0 = 182 + col * 58;
+          const cy0 = 104 - row * 28;
+          fillDeckledPoly(g, [
+            [cx0, cy0], [cx0 + 52, cy0], [cx0 + 52, cy0 + 25], [cx0, cy0 + 25]
+          ], { fill: cols[(row * 3 + col) % cols.length], pulpWidth: 1.2, seed: row * 10 + col, amp: 1.0 });
+        }
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // CHAPTER 5 (2008-2010s): Origami Cable-Stayed Bridge, Bird's Nest, Modern City, Ink Mountains
+    // -----------------------------------------------------------------------
+    Sprites.seaBridge = makeSprite(2160, 680, (g, w, h) => {
+      const deckY = 448;
+      // Stay-cable fans from 2 origami diamond pylons
+      const pylons = [540, 1580];
+      g.strokeStyle = 'rgba(246, 242, 232, 0.72)';
+      g.lineWidth = 2.2;
+      for (const px of pylons) {
+        for (let i = 1; i <= 9; i++) {
+          const span = i * 54;
+          const topY = 92 + i * 16;
+          g.beginPath(); g.moveTo(px, topY); g.lineTo(px - span, deckY); g.stroke();
+          g.beginPath(); g.moveTo(px, topY); g.lineTo(px + span, deckY); g.stroke();
+        }
+      }
+
+      // Two Origami Diamond-A Bridge Pylons (faceted white/silver paper!)
+      for (const px of pylons) {
+        // Left lit facet & right shaded facet
+        fillDeckledPoly(g, [
+          [px - 68, 665], [px - 34, deckY], [px, 52], [px, 145], [px - 18, deckY], [px - 32, 665]
+        ], { fill: PaperAtlas.cotton.pattern, pulpWidth: 2.2, seed: px + 1, amp: 1.4 });
+        fillDeckledPoly(g, [
+          [px + 68, 665], [px + 34, deckY], [px, 52], [px, 145], [px + 18, deckY], [px + 32, 665]
+        ], { fill: PaperAtlas.silverFoil.pattern, tint: 'rgba(30,52,66,0.22)', pulpWidth: 2, seed: px + 2, amp: 1.4 });
+        // Crossbeam
+        fillDeckledPoly(g, [
+          [px - 44, 305], [px + 44, 305], [px + 40, 326], [px - 40, 326]
+        ], { fill: PaperAtlas.cotton.pattern, pulpWidth: 1.5, seed: px + 3, amp: 1 });
+      }
+
+      // Sweeping origami folded deck girder
+      fillDeckledPoly(g, [
+        [0, deckY], [w, deckY], [w, deckY + 40], [0, deckY + 40]
+      ], { fill: PaperAtlas.cotton.pattern, pulpColor: '#ffffff', pulpWidth: 2.4, seed: 20081, amp: 1.4 });
+      // Underside shadow facet of deck
+      fillDeckledPoly(g, [
+        [0, deckY + 40], [w, deckY + 40], [w, deckY + 62], [0, deckY + 62]
+      ], { fill: PaperAtlas.steel.pattern, tint: 'rgba(18,34,46,0.34)', pulpWidth: 1, seed: 20082, amp: 1 });
+      // Guardrail posts
+      g.strokeStyle = 'rgba(248,244,236,0.85)';
+      g.lineWidth = 2;
+      g.beginPath(); g.moveTo(0, deckY - 12); g.lineTo(w, deckY - 12); g.stroke();
+    });
+
+    // Bird's Nest National Stadium (鸟巢剪纸 — organic interwoven steel twig ribs!)
+    Sprites.birdsNest = makeSprite(860, 360, (g, w, h) => {
+      const cx0 = w * 0.5, baseY = 326;
+      const glow = g.createRadialGradient(cx0, baseY - 95, 22, cx0, baseY - 95, 360);
+      glow.addColorStop(0, 'rgba(255, 222, 134, 0.96)');
+      glow.addColorStop(0.5, 'rgba(216, 122, 48, 0.72)');
+      glow.addColorStop(1, 'rgba(92, 34, 18, 0.92)');
+
+      g.save();
+      g.beginPath();
+      g.moveTo(64, baseY);
+      g.bezierCurveTo(88, 124, 218, 66, cx0, 114);
+      g.bezierCurveTo(642, 66, 772, 124, 796, baseY);
+      g.closePath();
+      g.fillStyle = '#4e2318';
+      g.fill();
+      g.fillStyle = glow;
+      g.fill();
+
+      g.clip();
+      // Multi-angle sculptural interwoven twigs inspired by Herzog & de Meuron Bird's Nest
+      const r = seededRand(20088);
+      for (let pass = 0; pass < 2; pass++) {
+        g.strokeStyle = pass === 0 ? 'rgba(34, 42, 50, 0.55)' : '#e6ecf2';
+        g.lineWidth = pass === 0 ? 10 : 6.2;
+        const off = pass === 0 ? 3 : 0;
+        for (let i = -5; i <= 14; i++) {
+          const x0 = i * 56 + (r() - 0.5) * 26;
+          const x1 = x0 + 180 + (r() - 0.5) * 90;
+          g.beginPath();
+          g.moveTo(x0 + off, baseY + 14);
+          g.bezierCurveTo(x0 + 40, 210, x1 - 50, 140, x1 + off, 40);
+          g.stroke();
+
+          const rx0 = i * 58 + 210 + (r() - 0.5) * 26;
+          const rx1 = rx0 - 200 + (r() - 0.5) * 90;
+          g.beginPath();
+          g.moveTo(rx0 + off, baseY + 14);
+          g.bezierCurveTo(rx0 - 60, 225, rx1 + 45, 130, rx1 + off, 40);
+          g.stroke();
+        }
+        // Horizontal sweeping structural belly ribs
+        for (let row = 0; row < 4; row++) {
+          const ry = 148 + row * 46;
+          g.beginPath();
+          g.moveTo(40, ry + off);
+          g.quadraticCurveTo(cx0, ry + 32 - row * 6 + off, w - 40, ry + off);
+          g.stroke();
+        }
+      }
+      g.restore();
+
+      // Sculpted metallic outer saddle contour
+      g.strokeStyle = '#f2f5f8';
+      g.lineWidth = 9;
+      g.beginPath();
+      g.moveTo(64, baseY);
+      g.bezierCurveTo(88, 124, 218, 66, cx0, 114);
+      g.bezierCurveTo(642, 66, 772, 124, 796, baseY);
+      g.stroke();
+      // Base podium
+      fillDeckledPoly(g, [[46, baseY - 4], [w - 46, baseY - 4], [w - 30, baseY + 26], [30, baseY + 26]], {
+        fill: PaperAtlas.steel.pattern, pulpWidth: 1.5, seed: 20089, amp: 1.2
+      });
+    });
+
+    // Organic Smooth Ink-Wash Mountain Ranges (青绿山水 · 千里江山图韵味 — full-bleed & fluid curves!)
+    function sampleOrganicRidge(w, baseY, peaks, samples = 96) {
+      const pts = [];
+      for (let i = 0; i <= samples; i++) {
+        const x = (i / samples) * w;
+        let lift = 0;
+        for (const [px, ph, pw] of peaks) {
+          const d = (x - px) / pw;
+          lift += ph * Math.exp(-d * d);
+        }
+        // Subtle painterly rocky undulation
+        const undul = Math.sin(x * 0.015) * 9 + Math.cos(x * 0.037) * 5;
+        pts.push([x, baseY - lift + undul]);
+      }
+      return pts;
+    }
+
+    function buildInkMountainRange(w, h, baseY, peaks, fillPat, topTint, mistColor, goldContour, seed) {
+      return makeSprite(w, h, (g) => {
+        const ridgePts = sampleOrganicRidge(w, baseY, peaks, 108);
+        const poly = [[0, h], ...ridgePts, [w, h]];
+        const dPts = fillDeckledPoly(g, poly, {
+          fill: fillPat,
+          pulpColor: mistColor,
+          pulpWidth: 3.4,
+          seed,
+          step: 16,
+          amp: 2.8,
+          innerShadow: false
+        });
+
+        g.save();
+        tracePoly(g, dPts, true);
+        g.clip();
+        // Rich mineral malachite/azurite ink wash gradient inside mountain silhouette
+        const grad = g.createLinearGradient(0, 40, 0, h);
+        grad.addColorStop(0, topTint);
+        grad.addColorStop(0.42, 'rgba(26, 68, 72, 0.08)');
+        grad.addColorStop(0.76, mistColor);
+        grad.addColorStop(1, 'rgba(14, 34, 44, 0.35)');
+        g.fillStyle = grad;
+        g.fillRect(0, 0, w, h);
+
+        // Soft glowing cloud mist ribbon along foothill waist
+        const mistBand = g.createLinearGradient(0, baseY - 20, 0, baseY + 120);
+        mistBand.addColorStop(0, 'rgba(244, 232, 200, 0)');
+        mistBand.addColorStop(0.5, mistColor);
+        mistBand.addColorStop(1, 'rgba(244, 232, 200, 0)');
+        g.fillStyle = mistBand;
+        g.fillRect(0, baseY - 20, w, 140);
+
+        // Delicate gold-ink ridge brushwork (青绿金线勾勒)
+        if (goldContour) {
+          g.strokeStyle = 'rgba(242, 206, 122, 0.58)';
+          g.lineWidth = 2.6;
+          g.beginPath();
+          ridgePts.forEach(([x, y], i) => i === 0 ? g.moveTo(x, y + 4) : g.lineTo(x, y + 4));
+          g.stroke();
+        }
+        g.restore();
+      });
+    }
+
+    Sprites.greenMtnFar = buildInkMountainRange(
+      3400, 740, 460,
+      [[340, 210, 260], [820, 315, 290], [1340, 250, 260], [1780, 345, 310], [2340, 285, 290], [2860, 320, 280], [3260, 200, 240]],
+      PaperAtlas.celadon.pattern, 'rgba(148, 212, 176, 0.32)', 'rgba(242, 224, 182, 0.28)', true, 20101
+    );
+    Sprites.greenMtnMid = buildInkMountainRange(
+      3400, 680, 410,
+      [[260, 195, 250], [740, 255, 270], [1260, 190, 240], [1720, 275, 280], [2240, 225, 270], [2760, 265, 270], [3220, 185, 240]],
+      PaperAtlas.inkMountain.pattern, 'rgba(92, 168, 152, 0.25)', 'rgba(232, 216, 178, 0.22)', true, 20102
+    );
+
+    // -----------------------------------------------------------------------
+    // CHAPTER 6 (2020s-Present): Tiangong Space Station, Paper Moon, Lunar Probe, Grand Ink-Gold Panorama
+    // -----------------------------------------------------------------------
+    Sprites.tiangong = makeSprite(860, 440, (g, w, h) => {
+      const cx0 = w * 0.5, cy0 = h * 0.52;
+
+      // Helper for segmented golden-foil solar wing array
+      function drawSolarWing(x, y, rw, rh, ang, seed) {
+        g.save();
+        g.translate(x, y);
+        g.rotate(ang);
+        fillDeckledPoly(g, [
+          [-rw * 0.5, -rh * 0.5], [rw * 0.5, -rh * 0.5], [rw * 0.5, rh * 0.5], [-rw * 0.5, rh * 0.5]
+        ], { fill: PaperAtlas.goldFoil.pattern, tint: 'rgba(130, 74, 18, 0.16)', pulpWidth: 1.4, seed, amp: 0.9 });
+        // Solar cell grid lines
+        g.strokeStyle = 'rgba(72, 42, 12, 0.52)';
+        g.lineWidth = 1.1;
+        for (let gx = -rw * 0.5 + 18; gx < rw * 0.5; gx += 18) {
+          g.beginPath(); g.moveTo(gx, -rh * 0.5); g.lineTo(gx, rh * 0.5); g.stroke();
+        }
+        g.beginPath(); g.moveTo(-rw * 0.5, 0); g.lineTo(rw * 0.5, 0); g.stroke();
+        g.restore();
+      }
+
+      // Massive Wentian & Mengtian lab end solar arrays
+      drawSolarWing(cx0 - 275, cy0 - 115, 195, 56, -0.14, 20221);
+      drawSolarWing(cx0 - 275, cy0 + 108, 195, 56, -0.14, 20222);
+      drawSolarWing(cx0 + 275, cy0 - 115, 195, 56, -0.14, 20223);
+      drawSolarWing(cx0 + 275, cy0 + 108, 195, 56, -0.14, 20224);
+
+      // Core module middle solar wings
+      drawSolarWing(cx0 - 95, cy0 + 96, 118, 36, -0.14, 20225);
+      drawSolarWing(cx0 + 95, cy0 + 96, 118, 36, -0.14, 20226);
+
+      // Solar truss connectors
+      g.strokeStyle = '#dfe6ee';
+      g.lineWidth = 5;
+      g.beginPath();
+      g.moveTo(cx0 - 275, cy0 - 115); g.lineTo(cx0 - 275, cy0 + 108);
+      g.moveTo(cx0 + 275, cy0 - 115); g.lineTo(cx0 + 275, cy0 + 108);
+      g.stroke();
+
+      // Horizontal Lab Modules (Wentian Left + Mengtian Right) forming iconic T-shape
+      fillDeckledPoly(g, [
+        [cx0 - 285, cy0 - 22], [cx0 + 285, cy0 - 22], [cx0 + 285, cy0 + 22], [cx0 - 285, cy0 + 22]
+      ], { fill: PaperAtlas.silverFoil.pattern, pulpColor: '#ffffff', pulpWidth: 2, seed: 20227, amp: 1.1 });
+
+      // Central Tianhe Core Module (vertical leg of the T) + Docking Node Sphere
+      fillDeckledPoly(g, [
+        [cx0 - 26, cy0 - 108], [cx0 + 26, cy0 - 108], [cx0 + 30, cy0 + 128], [cx0 - 30, cy0 + 128]
+      ], { fill: PaperAtlas.cotton.pattern, pulpColor: '#ffffff', pulpWidth: 2, seed: 20228, amp: 1.1 });
+
+      // Node hub & Shenzhou capsule accents
+      g.fillStyle = '#c83a2c';
+      g.fillRect(cx0 - 28, cy0 - 36, 56, 7);
+      g.fillRect(cx0 - 170, cy0 - 22, 10, 44);
+      g.fillRect(cx0 + 160, cy0 - 22, 10, 44);
+
+      // Glowing tiny viewport windows
+      g.fillStyle = '#fae19c';
+      for (const [wx, wy] of [[cx0, cy0 - 65], [cx0, cy0 + 55], [cx0 - 110, cy0], [cx0 + 110, cy0]]) {
+        g.beginPath(); g.arc(wx, wy, 4.5, 0, Math.PI * 2); g.fill();
+      }
+    });
+
+    // Layered Cratered Paper Moon (纸雕明月)
+    Sprites.paperMoon = makeSprite(360, 360, (g, w, h) => {
+      const cx0 = w * 0.5, cy0 = h * 0.5, R = 148;
+      // Outer soft moon halo
+      const halo = g.createRadialGradient(cx0, cy0, R * 0.85, cx0, cy0, R * 1.22);
+      halo.addColorStop(0, 'rgba(246, 232, 192, 0.35)');
+      halo.addColorStop(1, 'rgba(246, 232, 192, 0)');
+      g.fillStyle = halo;
+      g.fillRect(0, 0, w, h);
+
+      // Deckled circular moon disc
+      const pts = [];
+      for (let i = 0; i < 40; i++) {
+        const a = (i / 40) * Math.PI * 2;
+        pts.push([cx0 + Math.cos(a) * R, cy0 + Math.sin(a) * R]);
+      }
+      fillDeckledPoly(g, pts, {
+        fill: PaperAtlas.cotton.pattern,
+        tint: 'rgba(242, 224, 174, 0.24)',
+        pulpColor: '#ffffff',
+        pulpWidth: 3,
+        seed: 20241,
+        step: 14,
+        amp: 2.2
+      });
+
+      // Layered recessed paper craters
+      const craters = [
+        [cx0 - 44, cy0 - 38, 32],
+        [cx0 + 48, cy0 - 22, 24],
+        [cx0 + 12, cy0 + 46, 38],
+        [cx0 - 62, cy0 + 36, 20],
+        [cx0 + 68, cy0 + 32, 16]
+      ];
+      for (const [x, y, r] of craters) {
+        g.save();
+        g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2);
+        g.fillStyle = 'rgba(138, 134, 128, 0.22)';
+        g.fill();
+        g.strokeStyle = 'rgba(255, 250, 236, 0.55)';
+        g.lineWidth = 1.6;
+        g.beginPath(); g.arc(x, y, r, 0.15 * Math.PI, 1.15 * Math.PI); g.stroke();
+        g.restore();
+      }
+    });
+
+    // Chang'e Lunar Exploration Craft (探月剪纸)
+    Sprites.lunarProbe = makeSprite(180, 150, (g) => {
+      // Gold solar paddles
+      fillDeckledPoly(g, [[12, 62], [60, 56], [60, 84], [12, 90]], { fill: PaperAtlas.goldFoil.pattern, pulpWidth: 1, seed: 20245, amp: 0.8 });
+      fillDeckledPoly(g, [[120, 56], [168, 62], [168, 90], [120, 84]], { fill: PaperAtlas.goldFoil.pattern, pulpWidth: 1, seed: 20246, amp: 0.8 });
+      // Octagonal silver/gold craft body
+      fillDeckledPoly(g, [[62, 46], [118, 46], [124, 96], [56, 96]], { fill: PaperAtlas.silverFoil.pattern, pulpWidth: 1.5, seed: 20247, amp: 0.9 });
+      // Parabolic dish & landing legs
+      g.strokeStyle = '#f5e8cc';
+      g.lineWidth = 2.6;
+      g.beginPath(); g.arc(90, 34, 22, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke();
+      g.beginPath(); g.moveTo(90, 34); g.lineTo(90, 46); g.stroke();
+      g.beginPath();
+      g.moveTo(64, 96); g.lineTo(48, 126);
+      g.moveTo(116, 96); g.lineTo(132, 126);
+      g.stroke();
+    });
+
+    // Grand Finale Full-Bleed Monumental Ink-Wash & Gold-River Panorama (立体水墨山河全景)
+    Sprites.epicRangeBack = buildInkMountainRange(
+      3600, 760, 440,
+      [[280, 220, 280], [780, 310, 300], [1360, 260, 280], [1820, 340, 310], [2360, 285, 290], [2920, 315, 290], [3360, 225, 250]],
+      PaperAtlas.inkMountain.pattern, 'rgba(66, 138, 138, 0.30)', 'rgba(34, 68, 96, 0.36)', true, 20261
+    );
+
+    Sprites.epicRangeFront = makeSprite(3600, 680, (g, w, h) => {
+      const ridge = sampleOrganicRidge(w, 330, [
+        [260, 175, 250], [720, 230, 270], [1260, 180, 250], [1780, 245, 285], [2340, 195, 265], [2860, 235, 275], [3340, 175, 240]
+      ], 112);
+      const poly = [[0, h], ...ridge, [w, h]];
+      const dPts = fillDeckledPoly(g, poly, {
+        fill: PaperAtlas.celadon.pattern,
+        tint: 'rgba(12, 28, 46, 0.44)',
+        pulpColor: 'rgba(240, 204, 120, 0.72)',
+        pulpWidth: 2.8,
+        seed: 20262,
+        step: 16,
+        amp: 2.8,
+        innerShadow: false
+      });
+      g.save();
+      tracePoly(g, dPts, true);
+      g.clip();
+
+      const wash = g.createLinearGradient(0, 90, 0, h);
+      wash.addColorStop(0, 'rgba(84, 164, 146, 0.24)');
+      wash.addColorStop(0.45, 'rgba(14, 34, 52, 0.14)');
+      wash.addColorStop(1, 'rgba(6, 15, 28, 0.62)');
+      g.fillStyle = wash;
+      g.fillRect(0, 0, w, h);
+
+      // Gold-ink ridge line
+      g.strokeStyle = 'rgba(240, 204, 120, 0.62)';
+      g.lineWidth = 2.6;
+      g.beginPath();
+      ridge.forEach(([x, y], i) => i === 0 ? g.moveTo(x, y + 4) : g.lineTo(x, y + 4));
+      g.stroke();
+
+      // Shimmering Golden River Ribbon winding majestically edge-to-edge (象征黄河长江)
+      g.strokeStyle = PaperAtlas.goldFoil.pattern;
+      g.lineWidth = 24;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(140, 560);
+      g.bezierCurveTo(720, 395, 1120, 475, 1780, 385);
+      g.bezierCurveTo(2340, 310, 2780, 445, 3460, 365);
+      g.stroke();
+      g.strokeStyle = 'rgba(255, 246, 206, 0.72)';
+      g.lineWidth = 6;
+      g.stroke();
+
+      // Warm golden valley town constellation lights
+      const r = seededRand(20269);
+      g.fillStyle = '#fae19c';
+      for (let i = 0; i < 140; i++) {
+        const gx = 160 + r() * 3280;
+        const gy = 325 + r() * 220;
+        g.globalAlpha = 0.3 + r() * 0.68;
+        g.beginPath(); g.arc(gx, gy, 1.5 + r() * 2.4, 0, Math.PI * 2); g.fill();
+      }
+      g.restore();
+    });
+  }
+
+  /* =========================================================================
+   * 6. LIVE 12FPS ARTICULATED PAPERCRAFT RENDERERS
+   * ========================================================================= */
+
+  // 12fps Hand-placed Stop-Motion Jitter Helper (±2px, ±0.5°)
+  function getStopMotionJitter(pieceId, animFrame, ampScale = 1.0) {
+    const jx = (hash32(pieceId, animFrame, 1) * 2 - 1) * 2.0 * ampScale;
+    const jy = (hash32(pieceId, animFrame, 2) * 2 - 1) * 2.0 * ampScale;
+    const jrot = (hash32(pieceId, animFrame, 3) * 2 - 1) * 0.5 * (Math.PI / 180) * ampScale;
+    return { jx, jy, jrot };
+  }
+
+  // Dynamic Perspective + Shadow + DOF Wrapper
+  function projectWorld(wx, wy, wz, cam) {
+    const dz = wz - cam.z;
+    if (dz <= 95 || dz >= 4600) return null;
+    const scale = FOCAL / dz;
+    const sx = CX + (wx - cam.x) * scale;
+    const sy = CY + (wy - cam.y) * scale;
+
+    // Far horizon atmospheric fade-in + ultra-close lens pass-out fade
+    const farFade = 1 - smoothstep(3200, 4550, dz);
+    const nearFade = smoothstep(105, 250, dz);
+    const alpha = farFade * nearFade;
+    if (alpha <= 0.006) return null;
+
+    // Dynamic upper-left desk-lamp drop shadow proportional to proximity (Z height)
+    const closeness = clamp(1 - (dz - 350) / 2800, 0.12, 1.0);
+    const shadowX = lerp(4, 24, closeness) * clamp(scale, 0.35, 1.8);
+    const shadowY = lerp(6, 30, closeness) * clamp(scale, 0.35, 1.8);
+    const shadowBlur = lerp(5, 32, closeness) * clamp(scale, 0.4, 1.6);
+
+    // Subtle optical Depth-of-Field blur for ultra-near foreground cutouts
+    const dofBlur = dz < 420 ? clamp((420 - dz) / 55, 0, 5.5) : 0;
+
+    return { sx, sy, scale, dz, alpha, shadowX, shadowY, shadowBlur, dofBlur };
+  }
+
+  function renderLayer(item, cam, animFrame, breathScale = 1.0) {
+    const p = projectWorld(item.wx, item.wy, item.wz, cam);
+    if (!p) return;
+    const finalAlpha = p.alpha * (item.alpha ?? 1);
+    if (finalAlpha <= 0.008) return;
+
+    const { jx, jy, jrot } = getStopMotionJitter(item.id, animFrame, (item.jitterScale ?? 1.0) * breathScale);
+
+    ctx.save();
+    ctx.globalAlpha = finalAlpha;
+    if (p.dofBlur >= 0.7 && !item.noDof) {
+      ctx.filter = `blur(${(Math.round(p.dofBlur * 2) / 2).toFixed(1)}px)`;
+    }
+
+    ctx.translate(p.sx + jx, p.sy + jy);
+    ctx.rotate((item.rot ?? 0) + jrot);
+    ctx.scale(p.scale * (item.scaleX ?? 1), p.scale * (item.scaleY ?? 1));
+
+    if (!item.noShadow) {
+      ctx.shadowColor = item.shadowColor ?? 'rgba(12, 8, 5, 0.42)';
+      ctx.shadowOffsetX = p.shadowX;
+      ctx.shadowOffsetY = p.shadowY;
+      ctx.shadowBlur = p.shadowBlur;
+    }
+
+    item.draw(ctx, p);
+    ctx.restore();
+  }
+
+  // --- Articulated Motif 1: Golden Papercut Wheat Bank (金黄剪纸麦浪) ---
+  function drawWheatBank(g, tObj, count, spanW, seed, flipDir = 1) {
+    for (let i = 0; i < count; i++) {
+      const f = i / (count - 1);
+      const bx = (f - 0.5) * spanW;
+      const h = 230 + hash32(seed, i, 1) * 145;
+      const phase = hash32(seed, i, 2) * Math.PI * 2;
+      const sway = Math.sin(tObj * 2.4 + phase) * 26 * flipDir + Math.sin(tObj * 1.1 + f * 5) * 14;
+
+      g.save();
+      g.translate(bx, 0);
+      // Stalk stem
+      g.strokeStyle = '#c4832a';
+      g.lineWidth = 4.2;
+      g.beginPath();
+      g.moveTo(0, 20);
+      g.quadraticCurveTo(sway * 0.45, -h * 0.5, sway, -h);
+      g.stroke();
+
+      // Golden papercut leaves
+      g.fillStyle = PaperAtlas.ochre.pattern;
+      g.beginPath();
+      g.moveTo(sway * 0.25, -h * 0.32);
+      g.quadraticCurveTo(sway * 0.25 + 48 * flipDir, -h * 0.44, sway * 0.25 + 78 * flipDir, -h * 0.22);
+      g.quadraticCurveTo(sway * 0.25 + 36 * flipDir, -h * 0.30, sway * 0.25, -h * 0.26);
+      g.fill();
+
+      // Serrated wheat ear grains at tip
+      const tipX = sway, tipY = -h;
+      const angle = Math.atan2(sway * 0.85, h) * 0.7;
+      g.translate(tipX, tipY);
+      g.rotate(angle);
+      for (let k = 0; k < 6; k++) {
+        const ky = k * 14 - 4;
+        for (const side of [-1, 1]) {
+          g.beginPath();
+          g.moveTo(0, ky);
+          g.lineTo(side * 15, ky - 11);
+          g.lineTo(side * 9, ky - 22);
+          g.lineTo(0, ky - 9);
+          g.closePath();
+          g.fillStyle = k % 2 === 0 ? '#e6ad42' : '#cf8d28';
+          g.fill();
+          g.strokeStyle = '#f9e6b2';
+          g.lineWidth = 0.9;
+          g.stroke();
+        }
+      }
+      // Fine awns
+      g.strokeStyle = '#f4d98d';
+      g.lineWidth = 1.1;
+      g.beginPath();
+      g.moveTo(-5, -18); g.lineTo(-12, -46);
+      g.moveTo(0, -22);  g.lineTo(0, -52);
+      g.moveTo(5, -18);  g.lineTo(12, -46);
+      g.stroke();
+      g.restore();
+    }
+  }
+
+  // --- Articulated Motif 2: Hanging Red Palace Lantern (大红灯笼) ---
+  function drawRedLantern(g, tObj, phase, scale = 1) {
+    const swing = Math.sin(tObj * 2.1 + phase) * 0.11;
+    g.save();
+    g.scale(scale, scale);
+    // Long silk cord extending cleanly upward out of top frame at all Z-depths
+    g.strokeStyle = '#ecc262';
+    g.lineWidth = 2.4;
+    g.beginPath(); g.moveTo(0, -1400); g.lineTo(0, 0); g.stroke();
+    g.rotate(swing);
+    g.beginPath(); g.moveTo(0, 0); g.lineTo(0, 32); g.stroke();
+    // Subtle warm lantern glow
+    const glow = g.createRadialGradient(0, 68, 6, 0, 68, 72);
+    glow.addColorStop(0, 'rgba(255, 194, 86, 0.42)');
+    glow.addColorStop(1, 'rgba(255, 140, 40, 0)');
+    g.fillStyle = glow;
+    g.beginPath(); g.arc(0, 68, 72, 0, Math.PI * 2); g.fill();
+    // Lantern paper globe
+    g.beginPath();
+    g.ellipse(0, 68, 42, 34, 0, 0, Math.PI * 2);
+    g.fillStyle = PaperAtlas.cinnabar.pattern;
+    g.fill();
+    g.strokeStyle = '#f2cc70';
+    g.lineWidth = 2;
+    g.stroke();
+    // Ribs
+    for (const rx of [-20, 0, 20]) {
+      g.beginPath();
+      g.ellipse(0, 68, Math.abs(rx) + 2, 33, 0, 0, Math.PI * 2);
+      g.strokeStyle = 'rgba(242, 204, 112, 0.55)';
+      g.lineWidth = 1.4;
+      g.stroke();
+    }
+    // Gold top/bottom caps
+    g.fillStyle = '#e5b855';
+    g.fillRect(-16, 30, 32, 9);
+    g.fillRect(-14, 98, 28, 9);
+    // Golden swaying paper tassels
+    g.strokeStyle = '#e8ba54';
+    g.lineWidth = 2.4;
+    const tSwing = Math.sin(tObj * 2.1 + phase - 0.6) * 8;
+    for (const tx of [-7, 0, 7]) {
+      g.beginPath();
+      g.moveTo(tx, 107);
+      g.quadraticCurveTo(tx + tSwing * 0.5, 134, tx + tSwing, 158);
+      g.stroke();
+    }
+    g.restore();
+  }
+
+  // --- Articulated Motif 3: 4-Pose Folded Origami Peace Dove (白色折纸和平鸽) ---
+  function drawOrigamiDove(g, animFrame, phaseOffset, dir = 1) {
+    // 4-step stop-motion origami wing cycle
+    const pose = ((animFrame + phaseOffset) % 4 + 4) % 4;
+    const wingY = [-46, -12, 32, -8][pose];
+    const farWingY = [-36, -6, 22, -4][pose];
+
+    g.save();
+    g.scale(dir, 1);
+
+    // Far origami wing (slightly darker crease)
+    g.beginPath();
+    g.moveTo(-4, -4);
+    g.lineTo(-34, farWingY - 8);
+    g.lineTo(14, farWingY + 6);
+    g.lineTo(16, -2);
+    g.closePath();
+    g.fillStyle = '#dfd8c8';
+    g.fill();
+    g.strokeStyle = '#fffdf8';
+    g.lineWidth = 1.2;
+    g.stroke();
+
+    // Folded origami diamond body (upper lit facet + lower shaded facet)
+    g.beginPath();
+    g.moveTo(42, -6);   // beak tip
+    g.lineTo(22, -16);  // crown
+    g.lineTo(-22, -4);  // back
+    g.lineTo(-48, -14); // tail top
+    g.lineTo(-36, 10);  // tail bottom
+    g.lineTo(16, 8);    // chest
+    g.closePath();
+    g.fillStyle = PaperAtlas.cotton.pattern;
+    g.fill();
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 1.4;
+    g.stroke();
+
+    // Lower origami fold crease shadow
+    g.beginPath();
+    g.moveTo(42, -6);
+    g.lineTo(-22, -4);
+    g.lineTo(-36, 10);
+    g.lineTo(16, 8);
+    g.closePath();
+    g.fillStyle = 'rgba(135, 122, 102, 0.24)';
+    g.fill();
+
+    // Near primary origami wing (bright paper fold)
+    g.beginPath();
+    g.moveTo(-10, 0);
+    g.lineTo(-28, wingY);
+    g.lineTo(12, wingY + 14);
+    g.lineTo(22, 2);
+    g.closePath();
+    g.fillStyle = '#faf6ee';
+    g.fill();
+    g.strokeStyle = 'rgba(176, 162, 140, 0.55)';
+    g.lineWidth = 1.3;
+    g.stroke();
+
+    // Wing diagonal paper crease
+    g.beginPath();
+    g.moveTo(-10, 0);
+    g.lineTo(-6, wingY + 7);
+    g.strokeStyle = 'rgba(160, 146, 126, 0.45)';
+    g.stroke();
+
+    // Small olive-gold beak accent
+    g.fillStyle = '#d99a38';
+    g.beginPath();
+    g.moveTo(42, -6); g.lineTo(31, -10); g.lineTo(32, -2); g.closePath();
+    g.fill();
+    g.restore();
+  }
+
+  // --- Articulated Motif 4: Meshed Industrial Paper Gear (工业齿轮) ---
+  function drawPaperGear(g, radius, teeth, angle, fillPat, tint) {
+    g.save();
+    g.rotate(angle);
+    const outerR = radius + 16;
+    const rootR = radius - 6;
+    const innerR = radius * 0.64;
+    const hubR = radius * 0.24;
+
+    g.beginPath();
+    for (let i = 0; i < teeth; i++) {
+      const a0 = (i / teeth) * Math.PI * 2;
+      const da = (Math.PI * 2) / teeth;
+      const p1 = a0 + da * 0.14;
+      const p2 = a0 + da * 0.34;
+      const p3 = a0 + da * 0.64;
+      const p4 = a0 + da * 0.84;
+      if (i === 0) g.moveTo(Math.cos(a0) * rootR, Math.sin(a0) * rootR);
+      else g.lineTo(Math.cos(a0) * rootR, Math.sin(a0) * rootR);
+      g.lineTo(Math.cos(p1) * outerR, Math.sin(p1) * outerR);
+      g.lineTo(Math.cos(p2) * outerR, Math.sin(p2) * outerR);
+      g.lineTo(Math.cos(p3) * rootR, Math.sin(p3) * rootR);
+      g.lineTo(Math.cos(p4) * rootR, Math.sin(p4) * rootR);
+    }
+    g.closePath();
+
+    // Punch 6 spoked cutouts inside the gear
+    const spokes = 6;
+    for (let s = 0; s < spokes; s++) {
+      const sa0 = (s / spokes) * Math.PI * 2 + 0.16;
+      const sa1 = ((s + 1) / spokes) * Math.PI * 2 - 0.16;
+      g.moveTo(Math.cos(sa0) * innerR, Math.sin(sa0) * innerR);
+      g.arc(0, 0, innerR, sa0, sa1, false);
+      g.lineTo(Math.cos(sa1) * hubR, Math.sin(sa1) * hubR);
+      g.arc(0, 0, hubR, sa1, sa0, true);
+      g.closePath();
+    }
+    // Center axle hole
+    g.moveTo(hubR * 0.42, 0);
+    g.arc(0, 0, hubR * 0.42, 0, Math.PI * 2, true);
+
+    g.fillStyle = fillPat;
+    g.fill('evenodd');
+    if (tint) {
+      g.fillStyle = tint;
+      g.fill('evenodd');
+    }
+    g.strokeStyle = 'rgba(235, 244, 252, 0.55)';
+    g.lineWidth = 2.2;
+    g.stroke();
+
+    // Rivet dots around rim
+    g.fillStyle = 'rgba(236, 224, 196, 0.7)';
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      g.beginPath();
+      g.arc(Math.cos(a) * (radius * 0.78), Math.sin(a) * (radius * 0.78), 3.4, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+  }
+
+  // --- Articulated Motif 5: Vintage Steam Locomotive with Pumping Rods (蒸汽机车) ---
+  function drawSteamLocomotive(g, tObj) {
+    // Trailing coal tender + passenger car + locomotive body (centered near boiler)
+    // Coal tender (left)
+    fillDeckledPoly(g, [
+      [-370, -68], [-200, -68], [-200, 12], [-370, 12]
+    ], { fill: PaperAtlas.steel.pattern, tint: 'rgba(18,22,28,0.52)', pulpWidth: 2, seed: 19551, amp: 1.4 });
+    // Red stripe on tender
+    g.fillStyle = '#b93427';
+    g.fillRect(-368, -22, 166, 10);
+
+    // Engineer Cab
+    fillDeckledPoly(g, [
+      [-188, -118], [-74, -118], [-74, 12], [-188, 12]
+    ], { fill: PaperAtlas.steel.pattern, tint: 'rgba(20,24,30,0.48)', pulpWidth: 2.2, seed: 19552, amp: 1.4 });
+    // Glowing furnace cab window
+    g.fillStyle = '#f4be58';
+    g.fillRect(-162, -98, 54, 42);
+    g.strokeStyle = '#efe2c6';
+    g.lineWidth = 2.5;
+    g.strokeRect(-162, -98, 54, 42);
+
+    // Main Cylindrical Boiler
+    fillDeckledPoly(g, [
+      [-76, -98], [176, -98], [186, -84], [186, -12], [-76, -12]
+    ], { fill: PaperAtlas.steel.pattern, tint: 'rgba(16,22,28,0.56)', pulpWidth: 2.2, seed: 19553, amp: 1.5 });
+    // Brass boiler bands & steam dome
+    g.fillStyle = '#dda645';
+    for (const bx of [-30, 35, 105, 162]) g.fillRect(bx, -98, 7, 86);
+    fillDeckledPoly(g, [[28, -98], [38, -126], [76, -126], [86, -98]], {
+      fill: PaperAtlas.steel.pattern, tint: 'rgba(18,22,28,0.45)', pulpWidth: 1.5, seed: 19554, amp: 1.1
+    });
+    // Tall iconic smokestack
+    fillDeckledPoly(g, [[128, -98], [122, -158], [164, -158], [158, -98]], {
+      fill: PaperAtlas.steel.pattern, tint: 'rgba(14,18,22,0.58)', pulpWidth: 1.6, seed: 19555, amp: 1.2
+    });
+    // Red chassis running board & front cowcatcher
+    fillDeckledPoly(g, [[-194, -12], [202, -12], [202, 16], [-194, 16]], {
+      fill: PaperAtlas.cinnabar.pattern, pulpWidth: 1.5, seed: 19556, amp: 1.0
+    });
+    // Cowcatcher
+    fillDeckledPoly(g, [[182, -8], [234, 42], [180, 42]], {
+      fill: PaperAtlas.cinnabar.pattern, pulpWidth: 1.5, seed: 19557, amp: 1.2
+    });
+    // Front headlamp glow & Red Star emblem
+    g.fillStyle = '#fae4a2';
+    g.beginPath(); g.arc(190, -74, 10, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#d43628';
+    g.beginPath(); g.arc(185, -42, 12, 0, Math.PI * 2); g.fill();
+
+    // Articulated Spoked Driving Wheels (rotating at 12fps!)
+    const wheelAngle = tObj * 5.2;
+    const driveWheels = [-108, -28, 52, 132];
+    for (const wx of driveWheels) {
+      g.save();
+      g.translate(wx, 22);
+      g.rotate(wheelAngle);
+      g.beginPath(); g.arc(0, 0, 32, 0, Math.PI * 2);
+      g.fillStyle = '#262b30';
+      g.fill();
+      g.lineWidth = 6;
+      g.strokeStyle = '#c43628';
+      g.stroke();
+      g.lineWidth = 2.4;
+      g.strokeStyle = '#e8dfd0';
+      for (let s = 0; s < 6; s++) {
+        const a = (s / 6) * Math.PI * 2;
+        g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(a) * 28, Math.sin(a) * 28); g.stroke();
+      }
+      g.restore();
+    }
+    // Tender bogie wheels
+    for (const wx of [-332, -242]) {
+      g.save();
+      g.translate(wx, 28);
+      g.rotate(wheelAngle * 1.4);
+      g.beginPath(); g.arc(0, 0, 22, 0, Math.PI * 2);
+      g.fillStyle = '#252a30'; g.fill();
+      g.lineWidth = 4.5; g.strokeStyle = '#c43628'; g.stroke();
+      g.restore();
+    }
+
+    // Pumping Silver Steel Connecting Rod!
+    const rodOffX = Math.cos(wheelAngle) * 16;
+    const rodOffY = Math.sin(wheelAngle) * 16;
+    g.strokeStyle = '#e7edf2';
+    g.lineWidth = 7;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(-108 + rodOffX, 22 + rodOffY);
+    g.lineTo(132 + rodOffX, 22 + rodOffY);
+    g.stroke();
+    g.strokeStyle = '#424c55';
+    g.lineWidth = 2;
+    g.stroke();
+  }
+
+  // --- Articulated Motif 6: Torn Cotton-Paper Steam Puff (棉纸撕成的白色蒸汽团) ---
+  function drawCottonPuff(g, radius, seed) {
+    const pts = [];
+    const n = 22;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const lobe = 0.86
+        + 0.13 * Math.sin(a * 3 + seed)
+        + 0.11 * Math.cos(a * 5 + seed * 1.7)
+        + (hash32(seed, i, 7) - 0.5) * 0.16;
+      pts.push([Math.cos(a) * radius * lobe, Math.sin(a) * radius * lobe * 0.86]);
+    }
+    fillDeckledPoly(g, pts, {
+      fill: PaperAtlas.cotton.pattern,
+      pulpColor: 'rgba(255, 255, 255, 0.94)',
+      pulpWidth: 4.5,
+      seed,
+      step: 8,
+      amp: 4.2,
+      innerShadow: true
+    });
+  }
+
+  // --- Articulated Motif 7: Dongfanghong-1 Faceted Polyhedron Satellite (东方红一号) ---
+  function drawDongfanghong(g, tObj) {
+    const R = 64;
+    const spin = tObj * 0.9;
+
+    // 4 long slender metallic whip antennas radiating symmetrically
+    g.save();
+    g.strokeStyle = '#eef4fa';
+    g.lineWidth = 3.2;
+    for (let i = 0; i < 4; i++) {
+      const a = spin * 0.35 + (i * Math.PI * 0.5) + 0.42;
+      const len = 178;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * (R * 0.8), Math.sin(a) * (R * 0.8));
+      g.lineTo(Math.cos(a) * len, Math.sin(a) * len);
+      g.stroke();
+      g.fillStyle = '#f2cc70';
+      g.beginPath(); g.arc(Math.cos(a) * len, Math.sin(a) * len, 4.5, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+
+    // 72-hedron geometric silver-foil papercut silhouette (12-gon outer + faceted diamond belts!)
+    const outer = [];
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + spin * 0.15;
+      outer.push([Math.cos(a) * R, Math.sin(a) * R]);
+    }
+    g.save();
+    tracePoly(g, outer, true);
+    g.fillStyle = PaperAtlas.silverFoil.pattern;
+    g.fill();
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 2.2;
+    g.stroke();
+
+    // Internal faceted origami triangles catching studio lamp glints!
+    const rings = [0.38, 0.72, 1.0];
+    const phaseShift = (spin * 0.6) % (Math.PI / 4);
+    for (let col = 0; col < 8; col++) {
+      const a0 = -Math.PI * 0.5 + (col / 8) * Math.PI + phaseShift * 0.4;
+      const a1 = -Math.PI * 0.5 + ((col + 1) / 8) * Math.PI + phaseShift * 0.4;
+      const x0 = Math.sin(a0) * R, x1 = Math.sin(a1) * R;
+      for (let row = -2; row < 2; row++) {
+        const y0 = (row / 2.2) * R;
+        const y1 = ((row + 1) / 2.2) * R;
+        const w0 = Math.sqrt(Math.max(0.05, 1 - (y0 / R) ** 2));
+        const w1 = Math.sqrt(Math.max(0.05, 1 - (y1 / R) ** 2));
+        const shade = ((col + row) % 2 === 0) ? 0.16 : -0.14;
+        const lightBoost = (x0 < 0 && y0 < 0) ? 0.24 : 0;
+        g.beginPath();
+        g.moveTo(x0 * w0, y0);
+        g.lineTo(x1 * w0, y0);
+        g.lineTo(x1 * w1, y1);
+        g.lineTo(x0 * w1, y1);
+        g.closePath();
+        g.fillStyle = (shade + lightBoost) > 0
+          ? `rgba(255,252,240,${(shade + lightBoost).toFixed(2)})`
+          : `rgba(22,38,60,${Math.abs(shade).toFixed(2)})`;
+        g.fill();
+        g.strokeStyle = 'rgba(255,255,255,0.42)';
+        g.lineWidth = 1;
+        g.stroke();
+      }
+    }
+    // Iconic metallic equatorial belt
+    g.fillStyle = PaperAtlas.goldFoil.pattern;
+    g.fillRect(-R + 2, -6, (R - 2) * 2, 12);
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 1.2;
+    g.strokeRect(-R + 2, -6, (R - 2) * 2, 12);
+    g.restore();
+  }
+
+  // --- Articulated Motif 8: Slewing Tower Crane (塔吊剪影) ---
+  function drawTowerCrane(g, tObj, seed, flip = 1) {
+    const slew = 0.72 + 0.28 * Math.sin(tObj * 0.9 + seed);
+    const hoist = 70 + 38 * Math.sin(tObj * 1.4 + seed * 1.7);
+    g.save();
+    g.scale(flip, 1);
+    g.strokeStyle = '#38464d';
+    g.lineWidth = 4.5;
+    // Vertical lattice mast
+    g.strokeRect(-14, -360, 28, 360);
+    g.lineWidth = 2.2;
+    for (let y = -360; y < 0; y += 28) {
+      g.beginPath();
+      g.moveTo(-14, y); g.lineTo(14, y + 28);
+      g.moveTo(14, y); g.lineTo(-14, y + 28);
+      g.stroke();
+    }
+    // Operator cab
+    g.fillStyle = '#d48d36';
+    g.fillRect(10, -342, 26, 26);
+
+    // Slewing horizontal jib (foreshortens cleanly as it rotates!)
+    const jibLen = 220 * slew;
+    const counterLen = 78 * slew;
+    g.strokeStyle = '#c45232';
+    g.lineWidth = 5;
+    g.beginPath();
+    g.moveTo(-counterLen, -356); g.lineTo(jibLen, -356);
+    g.moveTo(-counterLen, -338); g.lineTo(jibLen, -338);
+    g.stroke();
+    // Peak A-frame & guy cables
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(0, -408); g.lineTo(jibLen * 0.88, -356);
+    g.moveTo(0, -408); g.lineTo(-counterLen, -356);
+    g.moveTo(-12, -356); g.lineTo(0, -408); g.lineTo(12, -356);
+    g.stroke();
+    // Counterweight
+    g.fillStyle = '#47545c';
+    g.fillRect(-counterLen - 16, -356, 30, 22);
+
+    // Trolley & hoisted paper building block
+    const tx = jibLen * 0.68;
+    g.strokeStyle = '#2d373d';
+    g.lineWidth = 2;
+    g.beginPath(); g.moveTo(tx, -338); g.lineTo(tx, -338 + hoist); g.stroke();
+    fillDeckledPoly(g, [
+      [tx - 16, -338 + hoist], [tx + 16, -338 + hoist], [tx + 16, -314 + hoist], [tx - 16, -314 + hoist]
+    ], { fill: PaperAtlas.vellum.pattern, pulpWidth: 1, seed: seed + 5, amp: 0.8 });
+    g.restore();
+  }
+
+  // --- Articulated Motif 9: Scalloped Harbor Paper Waves (海港波浪) ---
+  function drawPaperWaveBand(g, width, amp, wavelength, fillPat, tint, seed) {
+    const pts = [];
+    const steps = 68;
+    for (let i = 0; i <= steps; i++) {
+      const f = i / steps;
+      const x = (f - 0.5) * width;
+      const crest = Math.abs(Math.sin(f * Math.PI * (width / wavelength))) * amp;
+      pts.push([x, -crest]);
+    }
+    pts.push([width * 0.5, 190], [-width * 0.5, 190]);
+    fillDeckledPoly(g, pts, {
+      fill: fillPat,
+      tint,
+      pulpColor: 'rgba(246, 244, 236, 0.88)',
+      pulpWidth: 3.4,
+      seed,
+      step: 14,
+      amp: 2.2
+    });
+  }
+
+  // --- Articulated Motif 10: Streamlined Fuxing High-Speed Bullet Train (复兴号高铁) ---
+  function drawFuxingTrain(g, tObj) {
+    // 4 sleek articulated cars + aerodynamic dolphin nose (facing right)
+    const carLen = 280;
+    const h = 64;
+
+    // Subtle paper-cut aerodynamic airflow ribbons trailing behind
+    g.save();
+    g.strokeStyle = 'rgba(255, 248, 232, 0.58)';
+    g.lineWidth = 3;
+    for (let i = 0; i < 4; i++) {
+      const ry = -48 + i * 16;
+      const len = 140 + ((i * 57) % 110) + Math.sin(tObj * 14 + i) * 28;
+      g.beginPath();
+      g.moveTo(-780, ry);
+      g.lineTo(-780 - len, ry);
+      g.stroke();
+    }
+    g.restore();
+
+    // Rear 2 passenger cars
+    for (let c = 2; c >= 1; c--) {
+      const cx0 = -c * (carLen + 8);
+      fillDeckledPoly(g, [
+        [cx0 - carLen * 0.5, -h], [cx0 + carLen * 0.5, -h],
+        [cx0 + carLen * 0.5, 0], [cx0 - carLen * 0.5, 0]
+      ], { fill: PaperAtlas.cotton.pattern, pulpColor: '#ffffff', pulpWidth: 1.8, seed: 20170 + c, amp: 0.9 });
+      // Dark accordion vestibule connector
+      g.fillStyle = '#2c343c';
+      g.fillRect(cx0 + carLen * 0.5, -h + 4, 10, h - 8);
+      // Iconic China-red CR400AF racing band & tinted window ribbon
+      g.fillStyle = '#222b34';
+      g.fillRect(cx0 - carLen * 0.48, -h + 14, carLen * 0.96, 17);
+      g.fillStyle = '#b9262c';
+      g.fillRect(cx0 - carLen * 0.5, -h + 34, carLen, 10);
+      g.fillStyle = '#e5b958';
+      g.fillRect(cx0 - carLen * 0.5, -h + 44, carLen, 3);
+      // Warm interior window highlights
+      g.fillStyle = 'rgba(255, 236, 184, 0.55)';
+      for (let wx = cx0 - carLen * 0.44; wx < cx0 + carLen * 0.42; wx += 24) {
+        g.fillRect(wx, -h + 17, 16, 11);
+      }
+    }
+
+    // Lead Aerodynamic Dolphin-Nose Power Car
+    const nosePts = [
+      [-140, -h], [86, -h], [156, -h + 12], [224, -h + 36], [262, -16], [256, 0], [-140, 0]
+    ];
+    fillDeckledPoly(g, nosePts, {
+      fill: PaperAtlas.silverFoil.pattern,
+      tint: 'rgba(255,255,255,0.45)',
+      pulpColor: '#ffffff',
+      pulpWidth: 2.0,
+      seed: 20175,
+      amp: 0.9
+    });
+    // Sculpted cockpit wrap visor
+    g.fillStyle = '#1b242d';
+    g.beginPath();
+    g.moveTo(106, -h + 14);
+    g.lineTo(166, -h + 18);
+    g.lineTo(192, -h + 32);
+    g.lineTo(118, -h + 32);
+    g.closePath();
+    g.fill();
+    // Sweeping China-red "Dragon/Phoenix" nose stripe
+    g.fillStyle = '#bd262d';
+    g.beginPath();
+    g.moveTo(-140, -h + 34);
+    g.lineTo(168, -h + 34);
+    g.lineTo(256, -14);
+    g.lineTo(252, -7);
+    g.lineTo(156, -h + 45);
+    g.lineTo(-140, -h + 45);
+    g.closePath();
+    g.fill();
+    // Passenger windows on lead car
+    g.fillStyle = '#222b34';
+    g.fillRect(-132, -h + 14, 212, 17);
+    g.fillStyle = 'rgba(255, 238, 188, 0.58)';
+    for (let wx = -124; wx < 70; wx += 24) g.fillRect(wx, -h + 17, 16, 11);
+    // Bright LED nose headlight beam
+    const beam = g.createLinearGradient(252, -12, 410, -4);
+    beam.addColorStop(0, 'rgba(255, 248, 214, 0.72)');
+    beam.addColorStop(1, 'rgba(255, 248, 214, 0)');
+    g.fillStyle = beam;
+    g.beginPath();
+    g.moveTo(252, -16); g.lineTo(410, -34); g.lineTo(410, 12); g.lineTo(252, -6);
+    g.closePath();
+    g.fill();
+  }
+
+  /* =========================================================================
+   * 7. CHAPTER PALETTE INTERPOLATION & CAMERA CHOREOGRAPHY (24FPS)
+   * ========================================================================= */
+  const PALETTE_KEYS = [
+    { t: 0.0,  top: [238, 225, 196], mid: [228, 208, 170], bot: [204, 166, 118], relief: 0.26, starAlpha: 0.0 },
+    { t: 5.5,  top: [218, 204, 178], mid: [176, 172, 162], bot: [118, 130, 142], relief: 0.24, starAlpha: 0.0 },
+    { t: 7.2,  top: [38, 72, 102],   mid: [62, 98, 128],   bot: [112, 136, 152], relief: 0.22, starAlpha: 0.0 },
+    { t: 11.4, top: [22, 46, 76],    mid: [28, 58, 92],    bot: [42, 72, 104],   relief: 0.20, starAlpha: 0.15 },
+    { t: 13.0, top: [10, 22, 44],    mid: [18, 39, 70],    bot: [26, 54, 88],    relief: 0.16, starAlpha: 0.92 },
+    { t: 17.2, top: [16, 36, 62],    mid: [38, 72, 94],    bot: [122, 116, 98],  relief: 0.18, starAlpha: 0.45 },
+    { t: 19.2, top: [52, 108, 112],  mid: [148, 166, 142], bot: [234, 196, 128], relief: 0.23, starAlpha: 0.0 },
+    { t: 23.4, top: [64, 126, 120],  mid: [172, 194, 164], bot: [242, 214, 156], relief: 0.23, starAlpha: 0.0 },
+    { t: 25.2, top: [56, 118, 110],  mid: [158, 192, 170], bot: [244, 218, 166], relief: 0.23, starAlpha: 0.0 },
+    { t: 29.4, top: [30, 62, 88],    mid: [78, 112, 128],  bot: [178, 172, 150], relief: 0.20, starAlpha: 0.25 },
+    { t: 31.2, top: [8, 18, 38],     mid: [18, 38, 68],    bot: [34, 62, 88],    relief: 0.16, starAlpha: 1.0 },
+    { t: 36.0, top: [7, 16, 34],     mid: [16, 35, 64],    bot: [30, 56, 82],    relief: 0.16, starAlpha: 1.0 }
+  ];
+
+  function samplePalette(t) {
+    for (let i = 0; i < PALETTE_KEYS.length - 1; i++) {
+      const a = PALETTE_KEYS[i], b = PALETTE_KEYS[i + 1];
+      if (t >= a.t && t <= b.t) {
+        const k = easeInOutSine((t - a.t) / (b.t - a.t));
+        return {
+          top: lerpColor(a.top, b.top, k),
+          mid: lerpColor(a.mid, b.mid, k),
+          bot: lerpColor(a.bot, b.bot, k),
+          relief: lerp(a.relief, b.relief, k),
+          starAlpha: lerp(a.starAlpha, b.starAlpha, k)
+        };
+      }
+    }
+    const last = PALETTE_KEYS[PALETTE_KEYS.length - 1];
+    return {
+      top: lerpColor(last.top, last.top, 0),
+      mid: lerpColor(last.mid, last.mid, 0),
+      bot: lerpColor(last.bot, last.bot, 0),
+      relief: last.relief,
+      starAlpha: last.starAlpha
+    };
+  }
+
+  // Smooth Camera Path along Z (36s continuous push-in, easing gently to rest at 36s!)
+  function getCamera(tCam) {
+    const t = clamp(tCam, 0, TOTAL_DURATION);
+    // Linear pace 325 units/s through 0..32.5s, then smooth cubic deceleration to Z=11320 at 36s
+    let z;
+    if (t <= 32.5) {
+      z = t * 325;
+    } else {
+      const u = (t - 32.5) / 3.5; // 0..1
+      // Continuity of derivative: slope at u=0 is 325 * 3.5 = 1137.5; easeOutPoly gives total 757.5
+      // Use smooth deceleration integral: v(u) = 325 * (1 - u)^1.65
+      // Integral from 0 to u of (1-s)^1.65 ds = (1 - (1-u)^2.65) / 2.65
+      z = 32.5 * 325 + 325 * 3.5 * (1 - Math.pow(1 - u, 2.65)) / 2.65;
+    }
+    // Gentle organic rostrum camera lateral & vertical choreography
+    const x = Math.sin(t * 0.36) * 28 - smoothstep(24, 29, t) * 24 + smoothstep(29, 34, t) * 24;
+    const y = Math.cos(t * 0.28) * 14
+            - smoothstep(11.5, 14.5, t) * 42 + smoothstep(16.8, 19.5, t) * 42
+            - smoothstep(29.2, 33.5, t) * 34;
+    return { x, y, z };
+  }
+
+  // Precomputed background star field (for Chapters 3 & 6)
+  const BG_STARS = Array.from({ length: 160 }, (_, i) => ({
+    x: hash32(9901, i, 1) * W,
+    y: hash32(9901, i, 2) * (H * 0.78),
+    r: 0.9 + hash32(9901, i, 3) * 2.4,
+    phase: hash32(9901, i, 4) * Math.PI * 2,
+    gold: hash32(9901, i, 5) > 0.55
+  }));
+
+  function drawBackdrop(pal, tCam, animFrame) {
+    const grd = ctx.createLinearGradient(0, 0, 0, H);
+    grd.addColorStop(0, pal.top);
+    grd.addColorStop(0.55, pal.mid);
+    grd.addColorStop(1, pal.bot);
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, W, H);
+
+    // Overlay subtle tiled paper grain onto backdrop itself so sky is real textured paper
+    ctx.save();
+    ctx.globalAlpha = 0.14;
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.fillStyle = PaperAtlas.xuan.pattern;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    // Soft side-top table lamp illumination pool
+    const lamp = ctx.createRadialGradient(W * 0.28, H * 0.16, 40, W * 0.36, H * 0.32, W * 0.85);
+    lamp.addColorStop(0, 'rgba(255, 246, 220, 0.16)');
+    lamp.addColorStop(0.5, 'rgba(255, 242, 208, 0.04)');
+    lamp.addColorStop(1, 'rgba(0, 0, 0, 0.12)');
+    ctx.fillStyle = lamp;
+    ctx.fillRect(0, 0, W, H);
+
+    // Punched foil stars twinkling at 12fps in cosmic eras
+    if (pal.starAlpha > 0.01) {
+      ctx.save();
+      for (let i = 0; i < BG_STARS.length; i++) {
+        const s = BG_STARS[i];
+        const tw = 0.45 + 0.55 * Math.sin(animFrame * 0.32 + s.phase);
+        ctx.globalAlpha = pal.starAlpha * tw;
+        ctx.fillStyle = s.gold ? '#f6d682' : '#eef4fa';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+        if (s.r > 2.6) {
+          // 4-point star punch glint
+          ctx.strokeStyle = ctx.fillStyle;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(s.x - 6, s.y); ctx.lineTo(s.x + 6, s.y);
+          ctx.moveTo(s.x, s.y - 6); ctx.lineTo(s.x, s.y + 6);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // Update static SVG paper-relief opacity gently per era
+    reliefEl.style.opacity = pal.relief.toFixed(2);
+  }
+
+  /* =========================================================================
+   * 8. COLLECT ALL 6 HISTORICAL CHAPTERS INTO DEPTH-SORTED WORLD LAYERS
+   * ========================================================================= */
+  // Pre-build 11 Origami Doves across distinct Z-depths (Chapter 1)
+  const DOVES = [
+    { id: 1101, wz: 1520, startX: -940, endX: 980,  baseY: -60,  ampY: 85,  speed: 0.21, delay: 0.1, scale: 0.92, phase: 0 },
+    { id: 1102, wz: 1640, startX: -1020, endX: 920, baseY: -170, ampY: 85,  speed: 0.19, delay: 0.5, scale: 1.04, phase: 1 },
+    { id: 1103, wz: 1740, startX: -880, endX: 1100, baseY: -95,  ampY: 95,  speed: 0.22, delay: 1.0, scale: 0.88, phase: 2 },
+    { id: 1104, wz: 1840, startX: -980, endX: 1020, baseY: -240, ampY: 70,  speed: 0.18, delay: 0.3, scale: 0.95, phase: 3 },
+    { id: 1105, wz: 1990, startX: -1060, endX: 960, baseY: -195, ampY: 85,  speed: 0.20, delay: 1.4, scale: 0.90, phase: 0 },
+    { id: 1106, wz: 2090, startX: -920, endX: 1080, baseY: -290, ampY: 65,  speed: 0.17, delay: 0.8, scale: 0.84, phase: 2 },
+    { id: 1107, wz: 1680, startX: -840, endX: 1040, baseY: 30,   ampY: 75,  speed: 0.23, delay: 1.7, scale: 0.94, phase: 1 },
+    { id: 1108, wz: 1900, startX: -1100, endX: 960, baseY: -135, ampY: 95,  speed: 0.19, delay: 2.1, scale: 0.90, phase: 3 },
+    { id: 1109, wz: 2150, startX: -960, endX: 1120, baseY: -240, ampY: 80,  speed: 0.18, delay: 2.4, scale: 0.85, phase: 1 },
+    { id: 1110, wz: 1580, startX: -760, endX: 980,  baseY: -210, ampY: 70,  speed: 0.22, delay: 1.9, scale: 0.90, phase: 0 },
+    { id: 1111, wz: 2040, startX: -1040, endX: 1020,baseY: -80,  ampY: 85,  speed: 0.20, delay: 2.7, scale: 0.92, phase: 2 }
+  ];
+
+  // Pre-build 28 Gold-Foil Confetti Scraps for Dongfanghong-1 (Chapter 3)
+  const GOLD_CONFETTI = Array.from({ length: 28 }, (_, i) => ({
+    id: 3200 + i,
+    lag: 0.02 + (i / 28) * 0.42,
+    spreadX: (hash32(3200, i, 1) - 0.5) * 95,
+    spreadY: (hash32(3200, i, 2) - 0.5) * 95,
+    size: 7 + hash32(3200, i, 3) * 11,
+    spinSpeed: (hash32(3200, i, 4) - 0.5) * 7,
+    shape: i % 3
+  }));
+
+  function gatherSceneLayers(cam, tCam, tObj, animFrame) {
+    const layers = [];
+
+    // =======================================================================
+    // CHAPTER 1: 1949 · 换了人间 (0s – 6s | World Z: 1240 – 2280)
+    // =======================================================================
+    const ch1Alpha = 1 - smoothstep(5.3, 6.5, tCam);
+    if (ch1Alpha > 0.01) {
+      const openPart = smoothstep(0.0, 4.6, tCam);
+
+      // Foreground Torn 1949 Vintage Broadsheets bleeding cleanly past outer left/right/top/bottom edges!
+      layers.push({
+        id: 1001, wx: -880 - openPart * 290, wy: 0, wz: 1240,
+        alpha: ch1Alpha, jitterScale: 0.75,
+        draw: g => g.drawImage(Sprites.newsLeft, -480, -840)
+      });
+      layers.push({
+        id: 1002, wx: 880 + openPart * 290, wy: 0, wz: 1240,
+        alpha: ch1Alpha, jitterScale: 0.75,
+        draw: g => g.drawImage(Sprites.newsRight, -480, -840)
+      });
+
+      // Lower-foreground Golden Papercut Wheat Waves swaying left & right
+      layers.push({
+        id: 1010, wx: -560, wy: 560, wz: 1470,
+        alpha: ch1Alpha,
+        draw: g => drawWheatBank(g, tObj, 13, 820, 1010, 1)
+      });
+      layers.push({
+        id: 1011, wx: 560, wy: 565, wz: 1500,
+        alpha: ch1Alpha,
+        draw: g => drawWheatBank(g, tObj, 13, 820, 1011, -1)
+      });
+      layers.push({
+        id: 1012, wx: 0, wy: 610, wz: 1650,
+        alpha: ch1Alpha,
+        draw: g => drawWheatBank(g, tObj, 22, 1780, 1012, 1)
+      });
+
+      // Huabiao Marble Columns & Golden Water Bridges in front of Tiananmen
+      layers.push({
+        id: 1020, wx: 0, wy: 430, wz: 1785,
+        alpha: ch1Alpha,
+        draw: g => g.drawImage(Sprites.huabiaoBridge, -770, -170)
+      });
+
+      // Hanging Red Palace Lanterns cleanly suspended from above top edge
+      const lanternSpecs = [
+        { id: 1030, wx: -640, wy: -395, wz: 1620, sc: 1.24, ph: 0.2 },
+        { id: 1031, wx: 640,  wy: -395, wz: 1620, sc: 1.24, ph: 1.8 },
+        { id: 1032, wx: -380, wy: -365, wz: 1810, sc: 0.96, ph: 0.9 },
+        { id: 1033, wx: 380,  wy: -365, wz: 1810, sc: 0.96, ph: 2.5 },
+        { id: 1034, wx: -185, wy: -345, wz: 1850, sc: 0.80, ph: 1.4 },
+        { id: 1035, wx: 185,  wy: -345, wz: 1850, sc: 0.80, ph: 3.1 }
+      ];
+      for (const l of lanternSpecs) {
+        layers.push({
+          id: l.id, wx: l.wx, wy: l.wy, wz: l.wz,
+          alpha: ch1Alpha,
+          draw: g => drawRedLantern(g, tObj, l.ph, l.sc)
+        });
+      }
+
+      // Woodblock Tiananmen Gate Tower Centerpiece
+      layers.push({
+        id: 1040, wx: 0, wy: 120, wz: 1940,
+        alpha: ch1Alpha,
+        draw: g => {
+          g.drawImage(Sprites.tiananmen, -680, -340);
+          for (let f = 0; f < 8; f++) {
+            const fx = -480 + f * 137;
+            if (Math.abs(fx) < 120) continue;
+            const wave = Math.sin(tObj * 6 + f * 1.1) * 7;
+            g.strokeStyle = '#f2cc70';
+            g.lineWidth = 2.4;
+            g.beginPath(); g.moveTo(fx, 44); g.lineTo(fx, -18); g.stroke();
+            g.fillStyle = '#d13426';
+            g.beginPath();
+            g.moveTo(fx, -18);
+            g.quadraticCurveTo(fx + 18, -22 + wave, fx + 36, -12 - wave * 0.5);
+            g.lineTo(fx + 32, 6 - wave * 0.5);
+            g.quadraticCurveTo(fx + 16, 0 + wave, fx, 4);
+            g.closePath();
+            g.fill();
+          }
+        }
+      });
+
+      // Independent Flock of Origami Peace Doves weaving across Z-planes
+      for (const d of DOVES) {
+        const u = ((tObj - d.delay) * d.speed + 1.2) % 1.35;
+        const wx = lerp(d.startX, d.endX, u / 1.35);
+        const wy = d.baseY - u * 115 + Math.sin(tObj * 2.5 + d.phase) * d.ampY * 0.35;
+        layers.push({
+          id: d.id, wx, wy, wz: d.wz,
+          alpha: ch1Alpha,
+          scaleX: d.scale, scaleY: d.scale,
+          rot: -0.14 + Math.cos(tObj * 2.5 + d.phase) * 0.08,
+          draw: g => drawOrigamiDove(g, animFrame, d.phase, 1)
+        });
+      }
+
+      // Layered Woodblock Rising Sun Rays & Auspicious Parting Paper Clouds
+      layers.push({
+        id: 1060, wx: 0, wy: -10, wz: 2290,
+        alpha: ch1Alpha, noShadow: true,
+        draw: g => {
+          g.save();
+          g.rotate(tObj * 0.04);
+          for (let i = 0; i < 24; i++) {
+            const a0 = (i / 24) * Math.PI * 2;
+            const a1 = a0 + (Math.PI / 24) * 0.92;
+            g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, 1500, a0, a1); g.closePath();
+            g.fillStyle = i % 2 === 0 ? 'rgba(214, 152, 54, 0.16)' : 'rgba(186, 52, 40, 0.09)';
+            g.fill();
+          }
+          g.beginPath(); g.arc(0, 0, 230, 0, Math.PI * 2);
+          g.fillStyle = PaperAtlas.ochre.pattern;
+          g.globalAlpha = 0.72;
+          g.fill();
+          g.restore();
+        }
+      });
+
+      const cloudPart = smoothstep(3.2, 6.2, tCam);
+      layers.push({
+        id: 1065, wx: -610 - cloudPart * 280, wy: -270, wz: 2150,
+        alpha: ch1Alpha,
+        draw: g => g.drawImage(Sprites.warmCloud, -310, -130)
+      });
+      layers.push({
+        id: 1066, wx: 620 + cloudPart * 280, wy: -220, wz: 2210,
+        alpha: ch1Alpha, scaleX: -1,
+        draw: g => g.drawImage(Sprites.warmCloud, -310, -130)
+      });
+    }
+
+    // =======================================================================
+    // CHAPTER 2: 1950s–1960s · 工业奠基 (6s – 12s | World Z: 3340 – 4460)
+    // =======================================================================
+    const ch2Alpha = smoothstep(4.8, 6.2, tCam) * (1 - smoothstep(11.3, 12.6, tCam));
+    if (ch2Alpha > 0.01) {
+      // Foreground Origami Mountain Pass framing left & right flanks
+      layers.push({
+        id: 2001, wx: -760, wy: 265, wz: 3360,
+        alpha: ch2Alpha,
+        draw: g => g.drawImage(Sprites.origamiMtnLeft, -490, -380)
+      });
+      layers.push({
+        id: 2002, wx: 780, wy: 270, wz: 3440,
+        alpha: ch2Alpha,
+        draw: g => g.drawImage(Sprites.origamiMtnRight, -490, -380)
+      });
+
+      // Elevated Iron Trestle Track across mountain pass
+      layers.push({
+        id: 2008, wx: 180, wy: 298, wz: 3710,
+        alpha: ch2Alpha,
+        draw: g => {
+          fillDeckledPoly(g, [[-1100, -14], [1100, -14], [1100, 18], [-1100, 18]], {
+            fill: PaperAtlas.steel.pattern, pulpWidth: 1.5, seed: 2008, amp: 1.2
+          });
+          g.strokeStyle = '#d8e4ee';
+          g.lineWidth = 4;
+          for (let x = -840; x <= 960; x += 160) {
+            g.beginPath();
+            g.moveTo(x, 18); g.lineTo(x - 18, 340);
+            g.moveTo(x + 28, 18); g.lineTo(x + 46, 340);
+            g.moveTo(x, 18); g.lineTo(x + 36, 150);
+            g.moveTo(x + 28, 18); g.lineTo(x - 8, 150);
+            g.stroke();
+          }
+        }
+      });
+
+      // Vintage Steam Locomotive chugging boldly out of the paper mountain tunnel!
+      const locoProgress = clamp((tObj - 5.6) / 6.2, 0.05, 1.15);
+      const locoX = lerp(-680, 620, locoProgress);
+      const locoY = 238;
+      layers.push({
+        id: 2010, wx: locoX, wy: locoY, wz: 3685,
+        alpha: ch2Alpha,
+        draw: g => drawSteamLocomotive(g, tObj)
+      });
+
+      // Stone Mountain Tunnel Portal (placed in front of left train origin!)
+      layers.push({
+        id: 2012, wx: -690, wy: 150, wz: 3605,
+        alpha: ch2Alpha,
+        draw: g => g.drawImage(Sprites.tunnelPortal, -210, -210)
+      });
+
+      // Cotton-Paper Steam Puffs billowing from locomotive smokestack
+      const chimneyX = locoX + 146;
+      const chimneyY = locoY - 165;
+      for (let p = 0; p < 10; p++) {
+        const life = ((tObj * 0.72 + p * 0.1) % 1.0);
+        const px = chimneyX - life * 480 + Math.sin(life * 7 + p) * 24;
+        const py = chimneyY - life * 245 - Math.sqrt(life) * 65;
+        const rad = lerp(22, 92, life);
+        const pAlpha = smoothstep(0, 0.12, life) * (1 - smoothstep(0.68, 1.0, life));
+        layers.push({
+          id: 2100 + p,
+          wx: px, wy: py, wz: 3655 + p * 5,
+          alpha: ch2Alpha * pAlpha * 0.95,
+          rot: life * 0.6 * (p % 2 === 0 ? 1 : -1),
+          draw: g => drawCottonPuff(g, rad, 2100 + p * 13)
+        });
+      }
+
+      // Giant Interlocking Vintage Industrial Gears turning behind train!
+      const gearAngle = tObj * 0.78;
+      layers.push({
+        id: 2030, wx: -640, wy: -210, wz: 3980,
+        alpha: ch2Alpha,
+        draw: g => drawPaperGear(g, 235, 16, gearAngle, PaperAtlas.steel.pattern, 'rgba(30,52,72,0.22)')
+      });
+      layers.push({
+        id: 2031, wx: -270, wy: -365, wz: 4050,
+        alpha: ch2Alpha,
+        draw: g => drawPaperGear(g, 178, 12, -gearAngle * (16 / 12) + 0.24, PaperAtlas.ochre.pattern, 'rgba(135,76,22,0.20)')
+      });
+      layers.push({
+        id: 2032, wx: 650, wy: -220, wz: 4020,
+        alpha: ch2Alpha,
+        draw: g => drawPaperGear(g, 260, 18, -gearAngle * 0.85, PaperAtlas.blueprint.pattern, 'rgba(16,42,66,0.18)')
+      });
+      layers.push({
+        id: 2033, wx: 295, wy: -70, wz: 4110,
+        alpha: ch2Alpha,
+        draw: g => drawPaperGear(g, 158, 12, gearAngle * 0.85 * (18 / 12) + 0.15, PaperAtlas.rust.pattern, 'rgba(72,26,16,0.20)')
+      });
+
+      // Cyanotype Yangtze Steel Truss Bridge (solid deep-anchored piers)
+      layers.push({
+        id: 2040, wx: 0, wy: 245, wz: 4240,
+        alpha: ch2Alpha,
+        draw: g => g.drawImage(Sprites.blueprintBridge, -1300, -180)
+      });
+
+      // Cyanotype Steelworks Blast Furnaces & Tall Chimneys
+      layers.push({
+        id: 2045, wx: 0, wy: -35, wz: 4440,
+        alpha: ch2Alpha,
+        draw: g => g.drawImage(Sprites.blueprintFactory, -710, -310)
+      });
+    }
+
+    // =======================================================================
+    // CHAPTER 3: 1970 · 东方红一号 (12s – 18s | World Z: 4960 – 6360)
+    // =======================================================================
+    const ch3Alpha = smoothstep(11.1, 12.4, tCam) * (1 - smoothstep(17.1, 18.4, tCam));
+    if (ch3Alpha > 0.01) {
+      // Peeling Blueprint Paper Sky Curtains lifting upward! ("纸层向上掀起")
+      const peelProgress = easeInOutSine(smoothstep(11.4, 14.2, tObj));
+      layers.push({
+        id: 3001,
+        wx: -540 - peelProgress * 560,
+        wy: -180 - peelProgress * 580,
+        wz: 4960,
+        alpha: ch3Alpha,
+        rot: -peelProgress * 0.36,
+        draw: g => g.drawImage(Sprites.peelLeft, -490, -460)
+      });
+      layers.push({
+        id: 3002,
+        wx: 540 + peelProgress * 560,
+        wy: -180 - peelProgress * 580,
+        wz: 4960,
+        alpha: ch3Alpha,
+        rot: peelProgress * 0.36,
+        draw: g => g.drawImage(Sprites.peelRight, -490, -460)
+      });
+
+      // Concentric Multi-Depth Hand-Drawn Celestial Star-Chart Dome
+      layers.push({
+        id: 3010, wx: 0, wy: -20, wz: 5760,
+        alpha: ch3Alpha,
+        rot: tObj * 0.035,
+        scaleX: 1.15, scaleY: 1.15,
+        noShadow: true,
+        draw: g => g.drawImage(Sprites.starChartRing, -740, -740)
+      });
+      layers.push({
+        id: 3011, wx: 20, wy: -10, wz: 6320,
+        alpha: ch3Alpha * 0.72,
+        rot: -tObj * 0.025 + 0.8,
+        scaleX: 1.48, scaleY: 1.48,
+        noShadow: true,
+        draw: g => g.drawImage(Sprites.starChartRing, -740, -740)
+      });
+
+      // Curved Dashed Orbital Arc sweeping gracefully across the star dome
+      function orbitPoint(u) {
+        const p0 = [-980, 240], p1 = [-20, -350], p2 = [980, -155];
+        const inv = 1 - u;
+        return [
+          inv * inv * p0[0] + 2 * inv * u * p1[0] + u * u * p2[0],
+          inv * inv * p0[1] + 2 * inv * u * p1[1] + u * u * p2[1]
+        ];
+      }
+
+      layers.push({
+        id: 3020, wx: 0, wy: 0, wz: 5740,
+        alpha: ch3Alpha, noShadow: true,
+        draw: g => {
+          g.save();
+          g.strokeStyle = 'rgba(244, 214, 134, 0.76)';
+          g.lineWidth = 3.2;
+          g.setLineDash([18, 14]);
+          g.lineDashOffset = -tObj * 36;
+          g.beginPath();
+          g.moveTo(-980, 240);
+          g.quadraticCurveTo(-20, -350, 980, -155);
+          g.stroke();
+          g.setLineDash([]);
+          g.restore();
+        }
+      });
+
+      // Dongfanghong-1 Satellite gliding along the dashed arc (sharp crisp focus!)
+      const satU = clamp((tObj - 11.8) / 6.2, 0.08, 0.94);
+      const [satX, satY] = orbitPoint(satU);
+
+      // Expanding Concentric Broadcast Radio Waves (无线电波纹一圈圈扩散)
+      layers.push({
+        id: 3025, wx: satX, wy: satY, wz: 5720,
+        alpha: ch3Alpha, noShadow: true,
+        draw: g => {
+          for (let w = 0; w < 5; w++) {
+            const p = ((tObj * 0.65 + w * 0.2) % 1.0);
+            const r = 75 + p * 420;
+            const a = (1 - p) * 0.82;
+            g.save();
+            g.strokeStyle = w % 2 === 0
+              ? `rgba(245, 206, 114, ${a.toFixed(2)})`
+              : `rgba(230, 240, 250, ${(a * 0.8).toFixed(2)})`;
+            g.lineWidth = lerp(3.4, 1.2, p);
+            g.setLineDash([16, 10]);
+            g.beginPath();
+            g.arc(0, 0, r, 0, Math.PI * 2);
+            g.stroke();
+            g.restore();
+          }
+        }
+      });
+
+      // Tumbling Hot-Stamped Gold-Foil Confetti Scraps trailing behind satellite
+      for (const c of GOLD_CONFETTI) {
+        const cu = satU - c.lag;
+        if (cu < 0.01) continue;
+        const [cx0, cy0] = orbitPoint(cu);
+        const drift = c.lag * 2.2;
+        const wx = cx0 + c.spreadX * drift + Math.sin(tObj * 3 + c.id) * 14;
+        const wy = cy0 + c.spreadY * drift + Math.cos(tObj * 2.6 + c.id) * 14;
+        const cAlpha = 1 - smoothstep(0.28, 0.44, c.lag);
+        layers.push({
+          id: c.id, wx, wy, wz: 5705,
+          rot: tObj * c.spinSpeed + c.id,
+          alpha: ch3Alpha * cAlpha,
+          noShadow: true,
+          draw: g => {
+            g.fillStyle = PaperAtlas.goldFoil.pattern;
+            const s = c.size;
+            if (c.shape === 0) {
+              g.fillRect(-s * 0.5, -s * 0.5, s, s * 0.8);
+            } else if (c.shape === 1) {
+              g.beginPath(); g.moveTo(0, -s * 0.7); g.lineTo(s * 0.55, 0); g.lineTo(0, s * 0.7); g.lineTo(-s * 0.55, 0); g.closePath(); g.fill();
+            } else {
+              g.beginPath(); g.moveTo(0, -s * 0.65); g.lineTo(s * 0.65, s * 0.55); g.lineTo(-s * 0.65, s * 0.55); g.closePath(); g.fill();
+            }
+          }
+        });
+      }
+
+      // Hero Satellite Dongfanghong-1 (银色几何剪纸卫星)
+      layers.push({
+        id: 3030, wx: satX, wy: satY, wz: 5685,
+        alpha: ch3Alpha,
+        scaleX: 1.24, scaleY: 1.24,
+        shadowColor: 'rgba(4, 10, 22, 0.58)',
+        draw: g => drawDongfanghong(g, tObj)
+      });
+
+      // Full-Bleed Curved Earth Horizon Rim at bottom of cosmic dome
+      layers.push({
+        id: 3050, wx: 0, wy: 565, wz: 6220,
+        alpha: ch3Alpha,
+        scaleX: 1.68, scaleY: 1.45,
+        draw: g => g.drawImage(Sprites.earthArc, -980, -210)
+      });
+    }
+
+    // =======================================================================
+    // CHAPTER 4: 1978–1990s · 春天的故事 (18s – 24s | World Z: 7580 – 8680)
+    // =======================================================================
+    const ch4Alpha = smoothstep(17.2, 18.5, tCam) * (1 - smoothstep(23.2, 24.5, tCam));
+    if (ch4Alpha > 0.01) {
+      function popUpScaleY(startSec, dur = 1.45) {
+        const u = clamp((tObj - startSec) / dur, 0, 1);
+        return Math.max(0.02, easeOutBack(u));
+      }
+
+      const horizonY = 300;
+
+      // Front Scalloped Harbor Paper Waves (full-bleed width!)
+      layers.push({
+        id: 4001, wx: Math.sin(tObj * 1.4) * 58, wy: 435, wz: 7620,
+        alpha: ch4Alpha,
+        draw: g => drawPaperWaveBand(g, 3200, 34, 180, PaperAtlas.blueprint.pattern, 'rgba(34, 108, 114, 0.42)', 4001)
+      });
+
+      // Sailing Container Cargo Ship sandwiched cleanly between front & rear harbor waves!
+      const shipX = lerp(-680, 680, clamp((tObj - 18.0) / 6.0, 0, 1));
+      const shipBob = Math.sin(tObj * 2.8) * 9;
+      layers.push({
+        id: 4005, wx: shipX, wy: 332 + shipBob, wz: 7745,
+        alpha: ch4Alpha,
+        rot: Math.cos(tObj * 2.8) * 0.035,
+        draw: g => g.drawImage(Sprites.cargoShip, -270, -140)
+      });
+
+      // Rear Harbor Paper Waves (opposing lateral wave rhythm!)
+      layers.push({
+        id: 4008, wx: -Math.sin(tObj * 1.15 + 1.1) * 52, wy: 392, wz: 7860,
+        alpha: ch4Alpha,
+        draw: g => drawPaperWaveBand(g, 3400, 28, 165, PaperAtlas.celadon.pattern, 'rgba(26, 86, 94, 0.34)', 4008)
+      });
+
+      // Pop-Up Book Horizon Base Crease Fold
+      layers.push({
+        id: 4012, wx: 0, wy: horizonY + 12, wz: 7970,
+        alpha: ch4Alpha, noShadow: true,
+        draw: g => {
+          g.fillStyle = PaperAtlas.vellum.pattern;
+          g.fillRect(-1800, 0, 3600, 360);
+          g.strokeStyle = 'rgba(72, 54, 34, 0.42)';
+          g.lineWidth = 3;
+          g.beginPath(); g.moveTo(-1800, 0); g.lineTo(1800, 0); g.stroke();
+        }
+      });
+
+      // Pop-Up Vintage Perforated Postage Stamps unfolding from horizon left & right!
+      layers.push({
+        id: 4020, wx: -820, wy: horizonY, wz: 7920,
+        alpha: ch4Alpha,
+        scaleY: popUpScaleY(17.9, 1.4),
+        rot: -0.055,
+        draw: g => g.drawImage(Sprites.stampSpring, -145, -356)
+      });
+      layers.push({
+        id: 4021, wx: 830, wy: horizonY, wz: 7940,
+        alpha: ch4Alpha,
+        scaleY: popUpScaleY(18.3, 1.4),
+        rot: 0.05,
+        draw: g => g.drawImage(Sprites.stampHarbor, -145, -356)
+      });
+
+      // Pop-Up Yellowed Architectural Blueprint Sheet unfolding in mid-left
+      layers.push({
+        id: 4025, wx: -410, wy: horizonY, wz: 8060,
+        alpha: ch4Alpha,
+        scaleY: popUpScaleY(18.6, 1.45),
+        draw: g => g.drawImage(Sprites.popupBlueprint, -260, -440)
+      });
+
+      // Slewing Lattice Tower Cranes rising between construction sites
+      layers.push({
+        id: 4030, wx: -560, wy: horizonY, wz: 8010,
+        alpha: ch4Alpha,
+        scaleY: popUpScaleY(18.9, 1.3),
+        draw: g => drawTowerCrane(g, tObj, 4030, 1)
+      });
+      layers.push({
+        id: 4031, wx: 105, wy: horizonY, wz: 8140,
+        alpha: ch4Alpha,
+        scaleY: popUpScaleY(19.2, 1.3),
+        draw: g => drawTowerCrane(g, tObj, 4031, -1)
+      });
+      layers.push({
+        id: 4032, wx: 620, wy: horizonY, wz: 8220,
+        alpha: ch4Alpha,
+        scaleY: popUpScaleY(19.5, 1.3),
+        draw: g => drawTowerCrane(g, tObj, 4032, -1)
+      });
+
+      // Pop-Up Shenzhen SEZ Skyline (left-center)
+      layers.push({
+        id: 4040, wx: -440, wy: horizonY + 8, wz: 8260,
+        alpha: ch4Alpha,
+        scaleY: popUpScaleY(19.1, 1.55),
+        draw: g => g.drawImage(Sprites.shenzhenSkyline, -430, -700)
+      });
+
+      // Pop-Up Shanghai Pudong Lujiazui Skyline with Oriental Pearl & Jin Mao (right-center!)
+      layers.push({
+        id: 4045, wx: 440, wy: horizonY + 8, wz: 8360,
+        alpha: ch4Alpha,
+        scaleY: popUpScaleY(19.5, 1.6),
+        draw: g => g.drawImage(Sprites.pudongSkyline, -460, -738)
+      });
+
+      // Warm Morning Dawn Golden Sun Paper Disc behind skyline
+      layers.push({
+        id: 4055, wx: -10, wy: -155, wz: 8680,
+        alpha: ch4Alpha, noShadow: true,
+        draw: g => {
+          const rg = g.createRadialGradient(0, 0, 35, 0, 0, 380);
+          rg.addColorStop(0, 'rgba(255, 226, 146, 0.85)');
+          rg.addColorStop(0.55, 'rgba(242, 186, 86, 0.30)');
+          rg.addColorStop(1, 'rgba(242, 186, 86, 0)');
+          g.fillStyle = rg;
+          g.beginPath(); g.arc(0, 0, 380, 0, Math.PI * 2); g.fill();
+          g.beginPath(); g.arc(0, 0, 138, 0, Math.PI * 2);
+          g.fillStyle = PaperAtlas.goldFoil.pattern;
+          g.fill();
+        }
+      });
+    }
+
+    // =======================================================================
+    // CHAPTER 5: 2008–2010s · 基建与速度 (24s – 30s | World Z: 9460 – 10680)
+    // =======================================================================
+    const ch5Alpha = smoothstep(23.3, 24.6, tCam) * (1 - smoothstep(29.3, 30.6, tCam));
+    if (ch5Alpha > 0.01) {
+      // Sparkling Paper Sea below sea-crossing bridge (full-bleed!)
+      layers.push({
+        id: 5002, wx: Math.sin(tObj * 1.3) * 40, wy: 470, wz: 9520,
+        alpha: ch5Alpha,
+        draw: g => drawPaperWaveBand(g, 3400, 24, 155, PaperAtlas.celadon.pattern, 'rgba(24, 82, 94, 0.30)', 5002)
+      });
+
+      // Sweeping Origami Sea-Crossing Cable-Stayed Bridge (折纸跨海大桥)
+      layers.push({
+        id: 5010, wx: 0, wy: 155, wz: 9560,
+        alpha: ch5Alpha,
+        rot: -0.025,
+        scaleX: 1.12, scaleY: 1.12,
+        draw: g => g.drawImage(Sprites.seaBridge, -1080, -340)
+      });
+
+      // Streamlined Silver-White Fuxing High-Speed Bullet Train streaking across the sea-crossing bridge!
+      // Timed so at chapter midpoint (26.5s) the sleek Fuxing nose & cars sweep boldly across center-right!
+      const hsrPhase = (((tObj - 24.8) / 3.4) % 1 + 1) % 1;
+      const hsrX = lerp(-1280, 1580, hsrPhase);
+      const hsrY = 276 - (hsrX * Math.tan(0.025));
+      layers.push({
+        id: 5015, wx: hsrX, wy: hsrY, wz: 9515,
+        alpha: ch5Alpha,
+        rot: -0.025,
+        scaleX: 1.12, scaleY: 1.12,
+        draw: g => drawFuxingTrain(g, tObj)
+      });
+
+      // Secondary Distant Elevated Viaduct & Counter-Moving Bullet Train
+      layers.push({
+        id: 5022, wx: 0, wy: 325, wz: 9880,
+        alpha: ch5Alpha,
+        draw: g => {
+          fillDeckledPoly(g, [[-1750, -10], [1750, -10], [1750, 14], [-1750, 14]], {
+            fill: PaperAtlas.cotton.pattern, pulpWidth: 1.4, seed: 5022, amp: 1.0
+          });
+          for (let x = -1500; x <= 1500; x += 185) {
+            fillDeckledPoly(g, [[x - 16, 14], [x + 16, 14], [x + 22, 320], [x - 22, 320]], {
+              fill: PaperAtlas.steel.pattern, tint: 'rgba(20,38,48,0.2)', pulpWidth: 1, seed: x, amp: 0.9
+            });
+          }
+        }
+      });
+      const hsr2X = lerp(1520, -1520, (((tObj - 24.4) / 4.1) % 1 + 1) % 1);
+      layers.push({
+        id: 5024, wx: hsr2X, wy: 315, wz: 9865,
+        alpha: ch5Alpha,
+        scaleX: -0.62, scaleY: 0.62,
+        draw: g => drawFuxingTrain(g, tObj)
+      });
+
+      // Bird's Nest National Stadium & Contemporary Urban Skyline in Warm Sun
+      layers.push({
+        id: 5030, wx: -430, wy: 245, wz: 10040,
+        alpha: ch5Alpha,
+        scaleX: 1.08, scaleY: 1.08,
+        draw: g => g.drawImage(Sprites.birdsNest, -430, -310)
+      });
+
+      // Sleek Modern Skyline Group flanking right of Bird's Nest (Shanghai Tower & Canton Tower)
+      layers.push({
+        id: 5034, wx: 620, wy: 270, wz: 10120,
+        alpha: ch5Alpha,
+        scaleX: 1.08, scaleY: 1.08,
+        draw: g => {
+          fillDeckledPoly(g, [
+            [-145, 0], [-125, -450], [-82, -520], [-42, -460], [-25, 0]
+          ], { fill: PaperAtlas.silverFoil.pattern, tint: 'rgba(60,120,126,0.20)', pulpWidth: 2, seed: 50341, amp: 1.2 });
+          // Delicate twisting facade lines on Shanghai Tower
+          g.strokeStyle = 'rgba(246, 250, 255, 0.45)';
+          g.lineWidth = 1.6;
+          for (let y = -45; y > -455; y -= 45) {
+            g.beginPath(); g.moveTo(-132, y); g.lineTo(-34, y - 14); g.stroke();
+          }
+          // Waisted Canton Tower lattice silhouette
+          g.save();
+          g.strokeStyle = '#f2ece0';
+          g.lineWidth = 3.2;
+          g.beginPath();
+          g.moveTo(75, 0); g.quadraticCurveTo(106, -240, 92, -430);
+          g.moveTo(155, 0); g.quadraticCurveTo(124, -240, 138, -430);
+          g.moveTo(115, -430); g.lineTo(115, -535);
+          g.stroke();
+          for (let y = -30; y > -420; y -= 34) {
+            const wFactor = 0.45 + 0.55 * Math.pow((y + 230) / 230, 2);
+            const hw = 38 * wFactor;
+            g.beginPath(); g.moveTo(115 - hw, y); g.lineTo(115 + hw, y); g.stroke();
+          }
+          g.restore();
+          const mods = [[-260, 80, 260], [190, 92, 325], [300, 76, 240]];
+          for (const [mx, mw, mh] of mods) {
+            fillDeckledPoly(g, [[mx, 0], [mx, -mh], [mx + mw, -mh], [mx + mw, 0]], {
+              fill: PaperAtlas.vellum.pattern, tint: 'rgba(232,188,108,0.22)', pulpWidth: 1.6, seed: mx + 500, amp: 1.2
+            });
+          }
+        }
+      });
+
+      // Full-Bleed Blue-Green Ink-Wash Landscape Mountains (绿水青山错位) + Warm Golden Sun Glow
+      layers.push({
+        id: 5038, wx: -180, wy: -45, wz: 10300,
+        alpha: ch5Alpha, noShadow: true,
+        draw: g => {
+          const sun = g.createRadialGradient(0, 0, 30, 0, 0, 720);
+          sun.addColorStop(0, 'rgba(255, 234, 168, 0.52)');
+          sun.addColorStop(0.5, 'rgba(246, 206, 128, 0.18)');
+          sun.addColorStop(1, 'rgba(246, 206, 128, 0)');
+          g.fillStyle = sun;
+          g.beginPath(); g.arc(0, 0, 720, 0, Math.PI * 2); g.fill();
+        }
+      });
+      const mtnSlide = (tCam - 24) * 38;
+      layers.push({
+        id: 5040, wx: -mtnSlide, wy: 265, wz: 10360,
+        alpha: ch5Alpha,
+        scaleX: 1.56, scaleY: 1.32,
+        draw: g => g.drawImage(Sprites.greenMtnMid, -1700, -340)
+      });
+      layers.push({
+        id: 5042, wx: mtnSlide * 0.65, wy: 215, wz: 10640,
+        alpha: ch5Alpha,
+        scaleX: 1.66, scaleY: 1.38,
+        draw: g => g.drawImage(Sprites.greenMtnFar, -1700, -390)
+      });
+    }
+
+    // =======================================================================
+    // CHAPTER 6: 2020s–至今 · 星辰大海与终章 (30s – 36s & living hold)
+    // =======================================================================
+    const ch6Alpha = smoothstep(29.3, 30.8, tCam);
+    if (ch6Alpha > 0.01) {
+      // Stratosphere Cloud-Break Banks parting smoothly around the lens!
+      const breakOut = easeInOutSine(smoothstep(29.4, 32.4, tCam));
+      const cloudFade = 1 - smoothstep(32.0, 33.4, tCam);
+      if (cloudFade > 0.01) {
+        layers.push({
+          id: 6001, wx: -560 - breakOut * 620, wy: -110 - breakOut * 160, wz: 10720,
+          alpha: ch6Alpha * cloudFade,
+          draw: g => g.drawImage(Sprites.stormCloud, -390, -160)
+        });
+        layers.push({
+          id: 6002, wx: 560 + breakOut * 620, wy: -50 - breakOut * 130, wz: 10780,
+          alpha: ch6Alpha * cloudFade, scaleX: -1,
+          draw: g => g.drawImage(Sprites.stormCloud, -390, -160)
+        });
+        layers.push({
+          id: 6003, wx: 0, wy: 260 + breakOut * 420, wz: 10860,
+          alpha: ch6Alpha * cloudFade, scaleX: 1.55, scaleY: 1.2,
+          draw: g => g.drawImage(Sprites.stormCloud, -390, -160)
+        });
+      }
+
+      // Expansive Stitched Gold-Foil Star Trails sweeping across the entire cosmic vault (星轨)
+      layers.push({
+        id: 6010, wx: 0, wy: -60, wz: 12720,
+        alpha: ch6Alpha,
+        rot: tObj * 0.014,
+        noShadow: true,
+        draw: g => {
+          g.save();
+          const radii = [460, 680, 920, 1180, 1460];
+          radii.forEach((r, idx) => {
+            g.strokeStyle = idx % 2 === 0
+              ? 'rgba(240, 199, 110, 0.25)'
+              : 'rgba(182, 212, 242, 0.17)';
+            g.lineWidth = idx % 2 === 0 ? 2.0 : 1.3;
+            g.setLineDash([56 + idx * 22, 30]);
+            g.beginPath();
+            g.arc(0, 140, r, Math.PI * 0.98, Math.PI * 2.02);
+            g.stroke();
+          });
+          g.setLineDash([]);
+          g.restore();
+        }
+      });
+
+      // Cratered Paper Moon & Orbiting Chang'e Lunar Craft (upper-right sky)
+      layers.push({
+        id: 6020, wx: 790, wy: -320, wz: 12380,
+        alpha: ch6Alpha,
+        draw: g => g.drawImage(Sprites.paperMoon, -180, -180)
+      });
+
+      const lunarOrbitAngle = tObj * 0.34 - 0.65;
+      const probeX = 790 + Math.cos(lunarOrbitAngle) * 238;
+      const probeY = -320 + Math.sin(lunarOrbitAngle) * 126;
+      layers.push({
+        id: 6022, wx: 790, wy: -320, wz: 12350,
+        alpha: ch6Alpha, noShadow: true,
+        draw: g => {
+          g.strokeStyle = 'rgba(242, 206, 122, 0.44)';
+          g.lineWidth = 1.8;
+          g.setLineDash([8, 8]);
+          g.beginPath();
+          g.ellipse(0, 0, 238, 126, -0.18, 0, Math.PI * 2);
+          g.stroke();
+          g.setLineDash([]);
+        }
+      });
+      layers.push({
+        id: 6024, wx: probeX, wy: probeY, wz: 12300,
+        alpha: ch6Alpha,
+        scaleX: 0.76, scaleY: 0.76,
+        rot: Math.sin(tObj * 0.6) * 0.12,
+        draw: g => g.drawImage(Sprites.lunarProbe, -90, -75)
+      });
+
+      // Tiangong Chinese Space Station (upper-left sky with generous breathing room around title!)
+      const stOrbit = Math.sin((tObj - 30) * 0.24);
+      const stX = -710 + stOrbit * 55;
+      const stY = -295 - Math.cos((tObj - 30) * 0.24) * 22;
+      layers.push({
+        id: 6030, wx: stX, wy: stY, wz: 12240,
+        alpha: ch6Alpha,
+        scaleX: 0.78, scaleY: 0.78,
+        rot: -0.16 + stOrbit * 0.04,
+        shadowColor: 'rgba(4, 10, 24, 0.6)',
+        draw: g => g.drawImage(Sprites.tiangong, -430, -220)
+      });
+
+      // Lower Third — Full-Bleed Monumental 3D Ink-Wash & Gold-River Panorama (一纸山河)
+      layers.push({
+        id: 6040, wx: 0, wy: 450, wz: 12540,
+        alpha: ch6Alpha,
+        draw: g => g.drawImage(Sprites.epicRangeBack, -1800, -390)
+      });
+      layers.push({
+        id: 6042, wx: Math.sin(tObj * 0.22) * 18, wy: 495, wz: 12260,
+        alpha: ch6Alpha,
+        draw: g => g.drawImage(Sprites.epicRangeFront, -1800, -270)
+      });
+      // Soft feathered shanshui valley mist ribbons hovering gently between peaks
+      layers.push({
+        id: 6044, wx: -480 + Math.sin(tObj * 0.3) * 40, wy: 390, wz: 12180,
+        alpha: ch6Alpha * 0.34,
+        noShadow: true,
+        draw: g => {
+          const mg = g.createRadialGradient(0, 0, 40, 0, 0, 620);
+          mg.addColorStop(0, 'rgba(220, 232, 236, 0.55)');
+          mg.addColorStop(0.55, 'rgba(182, 206, 218, 0.20)');
+          mg.addColorStop(1, 'rgba(182, 206, 218, 0)');
+          g.fillStyle = mg;
+          g.beginPath(); g.ellipse(0, 0, 640, 95, 0, 0, Math.PI * 2); g.fill();
+        }
+      });
+      layers.push({
+        id: 6045, wx: 520 - Math.sin(tObj * 0.28) * 36, wy: 405, wz: 12160,
+        alpha: ch6Alpha * 0.30,
+        noShadow: true,
+        draw: g => {
+          const mg = g.createRadialGradient(0, 0, 40, 0, 0, 580);
+          mg.addColorStop(0, 'rgba(220, 232, 236, 0.52)');
+          mg.addColorStop(0.55, 'rgba(182, 206, 218, 0.18)');
+          mg.addColorStop(1, 'rgba(182, 206, 218, 0)');
+          g.fillStyle = mg;
+          g.beginPath(); g.ellipse(0, 0, 600, 88, 0, 0, Math.PI * 2); g.fill();
+        }
+      });
+    }
+
+    // Strict back-to-front Z-depth painter sort for exact occlusion!
+    layers.sort((a, b) => b.wz - a.wz);
+    return layers;
+  }
+
+  /* =========================================================================
+   * 9. RETRO LETTERPRESS CHAPTER CORNER TITLES & GRAND FINALE TITLE
+   * ========================================================================= */
+  const CHAPTERS = [
+    { start: 0,  end: 6,  year: '1949',        title: '换了人间',   theme: 'light' },
+    { start: 6,  end: 12, year: '1950s–1960s', title: '工业奠基',   theme: 'blueprint' },
+    { start: 12, end: 18, year: '1970',        title: '东方红一号', theme: 'cosmic' },
+    { start: 18, end: 24, year: '1978–1990s',  title: '春天的故事', theme: 'vellum' },
+    { start: 24, end: 30, year: '2008–2010s',  title: '基建与速度', theme: 'celadon' },
+    { start: 30, end: 36, year: '2020s–至今',  title: '星辰大海',   theme: 'cosmic' }
+  ];
+
+  function drawChapterCornerTag(tCam, animFrame) {
+    // Find active chapter; fade Chapter 6 corner tag out smoothly before grand center finale title arrives
+    const idx = Math.min(CHAPTERS.length - 1, Math.floor(clamp(tCam, 0, 35.999) / 6));
+    const ch = CHAPTERS[idx];
+    const localT = tCam - ch.start;
+
+    const fadeIn = smoothstep(0.18, 0.72, localT);
+    const fadeOutEnd = idx === 5 ? 2.5 : 5.35;
+    const fadeOut = 1 - smoothstep(fadeOutEnd, fadeOutEnd + 0.55, localT);
+    const alpha = fadeIn * fadeOut;
+    if (alpha <= 0.01) return;
+
+    const { jx, jy, jrot } = getStopMotionJitter(9000 + idx, animFrame, 0.55);
+    const slideY = (1 - easeOutCubic(fadeIn)) * 18;
+
+    const styles = {
+      light:     { bg: PaperAtlas.xuan.pattern,      ink: '#241b16', year: '#a62c22', border: 'rgba(130, 88, 48, 0.45)' },
+      blueprint: { bg: PaperAtlas.vellum.pattern,    ink: '#17324a', year: '#9c452d', border: 'rgba(28, 62, 91, 0.48)' },
+      cosmic:    { bg: PaperAtlas.cosmic.pattern,    ink: '#f4ecd8', year: '#ecc264', border: 'rgba(236, 194, 100, 0.55)' },
+      vellum:    { bg: PaperAtlas.vellum.pattern,    ink: '#223638', year: '#b84232', border: 'rgba(54, 108, 112, 0.48)' },
+      celadon:   { bg: PaperAtlas.xuan.pattern,      ink: '#1c3d3a', year: '#b4352a', border: 'rgba(58, 121, 106, 0.48)' }
+    }[ch.theme];
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(64 + jx, 54 + slideY + jy);
+    ctx.rotate(jrot * 0.6);
+
+    ctx.shadowColor = 'rgba(8, 6, 4, 0.36)';
+    ctx.shadowOffsetX = 5;
+    ctx.shadowOffsetY = 7;
+    ctx.shadowBlur = 14;
+
+    const tagW = 296, tagH = 88;
+    fillDeckledPoly(ctx, [[0, 0], [tagW, 0], [tagW, tagH], [0, tagH]], {
+      fill: styles.bg,
+      pulpColor: ch.theme === 'cosmic' ? 'rgba(236, 194, 100, 0.45)' : 'rgba(252, 246, 232, 0.88)',
+      pulpWidth: 2.2,
+      seed: 9100 + idx,
+      step: 12,
+      amp: 1.6,
+      innerShadow: false
+    });
+
+    ctx.shadowColor = 'transparent';
+    // Inner letterpress hairline border
+    ctx.strokeStyle = styles.border;
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(8, 8, tagW - 16, tagH - 16);
+
+    // Small red cinnabar registration dot/bar on left
+    ctx.fillStyle = styles.year;
+    ctx.fillRect(19, 20, 4, 48);
+
+    // Retro letterpress Year
+    ctx.fillStyle = styles.year;
+    ctx.font = 'bold 17px "Courier New", Consolas, monospace';
+    ctx.textBaseline = 'top';
+    ctx.fillText(ch.year, 34, 19);
+
+    // Bold Songti lead-type Chinese Chapter Title
+    ctx.fillStyle = styles.ink;
+    ctx.font = 'bold 31px "Songti SC", "STSong", "Noto Serif SC", "SimSun", serif';
+    ctx.fillText(ch.title, 33, 42);
+
+    ctx.restore();
+  }
+
+  function drawGrandFinaleTitle(tCam, animFrame) {
+    const reveal = smoothstep(31.8, 34.4, tCam);
+    if (reveal <= 0.005) return;
+
+    const eased = easeOutCubic(reveal);
+    const { jx, jy, jrot } = getStopMotionJitter(9999, animFrame, 0.42);
+
+    ctx.save();
+    ctx.globalAlpha = eased;
+    ctx.translate(CX + jx, CY - 56 + (1 - eased) * 24 + jy);
+    ctx.rotate(jrot * 0.45);
+
+    // Subtle dark celestial halo behind typography for crisp legibility over star trails
+    const bgGlow = ctx.createRadialGradient(0, 12, 24, 0, 12, 460);
+    bgGlow.addColorStop(0, 'rgba(8, 17, 36, 0.62)');
+    bgGlow.addColorStop(0.65, 'rgba(8, 17, 36, 0.24)');
+    bgGlow.addColorStop(1, 'rgba(8, 17, 36, 0)');
+    ctx.fillStyle = bgGlow;
+    ctx.beginPath();
+    ctx.ellipse(0, 12, 490, 210, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hot-stamped metallic gold horizontal rules
+    const ruleW = 190 * eased;
+    ctx.strokeStyle = 'rgba(240, 199, 110, 0.72)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-ruleW - 140, -76); ctx.lineTo(-140, -76);
+    ctx.moveTo(140, -76);          ctx.lineTo(ruleW + 140, -76);
+    ctx.stroke();
+
+    // Small golden diamond ornament at top center
+    ctx.fillStyle = '#f0c76e';
+    ctx.beginPath();
+    ctx.moveTo(0, -83); ctx.lineTo(6, -76); ctx.lineTo(0, -69); ctx.lineTo(-6, -76);
+    ctx.closePath();
+    ctx.fill();
+
+    // English Title: A PAPER EPIC (widely tracked vintage gold-foil letterpress)
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(4, 10, 22, 0.85)';
+    ctx.shadowOffsetX = 3;
+    ctx.shadowOffsetY = 5;
+    ctx.shadowBlur = 14;
+
+    const goldGrad = ctx.createLinearGradient(-260, -40, 260, 40);
+    goldGrad.addColorStop(0, '#fae29f');
+    goldGrad.addColorStop(0.45, '#e8b957');
+    goldGrad.addColorStop(0.75, '#fff0c2');
+    goldGrad.addColorStop(1, '#cf9b3a');
+
+    ctx.fillStyle = goldGrad;
+    ctx.font = '600 34px Georgia, "Times New Roman", serif';
+    drawTrackedText(ctx, 'A PAPER EPIC', 0, -40, 13);
+
+    // Main Chinese Title: 一 纸 山 河 (stately archival ivory-gold woodblock serif)
+    ctx.fillStyle = '#f7f0df';
+    ctx.font = 'bold 92px "Songti SC", "STSong", "Noto Serif SC", "SimSun", serif';
+    drawTrackedText(ctx, '一纸山河', 0, 44, 24);
+
+    // Artisan Cinnabar Red Stamp Seal (山河) cleanly tucked to right of Chinese title
+    ctx.save();
+    ctx.translate(274, 48);
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#b92e24';
+    ctx.fillRect(-20, -24, 40, 48);
+    ctx.strokeStyle = '#f5d6b8';
+    ctx.lineWidth = 1.6;
+    ctx.strokeRect(-16, -20, 32, 40);
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = '#f7ebd8';
+    ctx.font = 'bold 16px "Songti SC", "STSong", "SimSun", serif';
+    ctx.fillText('山', 0, -9);
+    ctx.fillText('河', 0, 11);
+    ctx.restore();
+
+    // Lower hairline rule
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = 'rgba(240, 199, 110, 0.52)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-215 * eased, 114);
+    ctx.lineTo(215 * eased, 114);
+    ctx.stroke();
+
+    // Subtitle: 1949 — PRESENT
+    ctx.fillStyle = 'rgba(242, 212, 144, 0.94)';
+    ctx.font = '500 22px "Courier New", Consolas, Georgia, serif';
+    drawTrackedText(ctx, '1949 — PRESENT', 0, 144, 7);
+
+    ctx.restore();
+  }
+
+  function drawTrackedText(g, text, cx0, cy0, tracking) {
+    const chars = Array.from(text);
+    const widths = chars.map(ch => g.measureText(ch).width);
+    const total = widths.reduce((a, b) => a + b, 0) + tracking * Math.max(0, chars.length - 1);
+    let x = cx0 - total * 0.5;
+    for (let i = 0; i < chars.length; i++) {
+      g.fillText(chars[i], x + widths[i] * 0.5, cy0);
+      x += widths[i] + tracking;
+    }
+  }
+
+  /* =========================================================================
+   * 10. DUAL-FRAMERATE ENGINE (24FPS CAMERA + 12FPS STOP-MOTION) & PLAYBACK
+   * ========================================================================= */
+  const params = new URLSearchParams(window.location.search);
+  const forcedTimeParam = params.has('t') ? parseFloat(params.get('t')) : null;
+  const isInspectMode = forcedTimeParam !== null && !Number.isNaN(forcedTimeParam);
+
+  const state = {
+    playing: !isInspectMode,
+    loop: false,
+    time: isInspectMode ? clamp(forcedTimeParam, 0, TOTAL_DURATION) : 0,
+    breathTime: isInspectMode ? clamp(forcedTimeParam, 0, TOTAL_DURATION) : 0,
+    lastRaf: null,
+    lastCamFrame: -1,
+    lastAnimFrame: -1,
+    hudForceHidden: isInspectMode,
+    hudVisible: !isInspectMode,
+    idleTimer: null,
+    scrubbing: false
+  };
+
+  // HUD elements
+  const hudEl = document.getElementById('hud');
+  const btnPlay = document.getElementById('btn-play');
+  const iconPause = document.getElementById('icon-pause');
+  const iconPlay = document.getElementById('icon-play');
+  const btnReplay = document.getElementById('btn-replay');
+  const btnLoop = document.getElementById('btn-loop');
+  const timelineWrap = document.getElementById('timeline-wrap');
+  const timelineFill = document.getElementById('timeline-fill');
+  const timelineThumb = document.getElementById('timeline-thumb');
+  const timecodeEl = document.getElementById('timecode');
+
+  function formatSec(s) {
+    const whole = Math.floor(clamp(s, 0, TOTAL_DURATION));
+    return `00:${String(whole).padStart(2, '0')}`;
+  }
+
+  function syncHud() {
+    const pct = (clamp(state.time, 0, TOTAL_DURATION) / TOTAL_DURATION) * 100;
+    timelineFill.style.width = `${pct}%`;
+    timelineThumb.style.left = `${pct}%`;
+    timecodeEl.textContent = `${formatSec(state.time)} / 00:36`;
+    timelineWrap.setAttribute('aria-valuenow', state.time.toFixed(1));
+    iconPause.style.display = state.playing ? 'block' : 'none';
+    iconPlay.style.display = state.playing ? 'none' : 'block';
+    btnLoop.classList.toggle('active', state.loop);
+  }
+
+  function setHudVisibility(visible) {
+    state.hudVisible = visible;
+    hudEl.classList.toggle('hud-hidden', !visible);
+    document.body.classList.toggle('cursor-hidden', !visible && !isInspectMode);
+  }
+
+  function scheduleHudAutoHide() {
+    if (state.idleTimer) clearTimeout(state.idleTimer);
+    if (state.hudForceHidden || state.scrubbing) return;
+    state.idleTimer = setTimeout(() => {
+      if (!state.scrubbing) setHudVisibility(false);
+    }, 2000);
+  }
+
+  function wakeHud() {
+    if (state.hudForceHidden) return;
+    setHudVisibility(true);
+    scheduleHudAutoHide();
+  }
+
+  function togglePlay() {
+    if (!state.playing && state.time >= TOTAL_DURATION - 0.01) {
+      state.time = 0;
+      state.breathTime = 0;
+    }
+    state.playing = !state.playing;
+    state.lastRaf = performance.now();
+    syncHud();
+    wakeHud();
+  }
+
+  function replay() {
+    state.time = 0;
+    state.breathTime = 0;
+    state.playing = true;
+    state.lastRaf = performance.now();
+    state.lastCamFrame = -1;
+    state.lastAnimFrame = -1;
+    syncHud();
+    wakeHud();
+  }
+
+  function toggleHudManual() {
+    if (state.hudVisible) {
+      state.hudForceHidden = true;
+      if (state.idleTimer) clearTimeout(state.idleTimer);
+      setHudVisibility(false);
+    } else {
+      state.hudForceHidden = false;
+      setHudVisibility(true);
+      scheduleHudAutoHide();
+    }
+  }
+
+  function toggleLoop() {
+    state.loop = !state.loop;
+    syncHud();
+    wakeHud();
+  }
+
+  function seekToClientX(clientX) {
+    const rect = timelineWrap.getBoundingClientRect();
+    const frac = clamp((clientX - rect.left) / rect.width, 0, 1);
+    state.time = frac * TOTAL_DURATION;
+    state.breathTime = state.time;
+    state.lastCamFrame = -1;
+    state.lastAnimFrame = -1;
+    syncHud();
+    renderFrame(true);
+  }
+
+  // Controls & Keyboard Bindings
+  btnPlay.addEventListener('click', togglePlay);
+  btnReplay.addEventListener('click', replay);
+  btnLoop.addEventListener('click', toggleLoop);
+
+  timelineWrap.addEventListener('pointerdown', e => {
+    state.scrubbing = true;
+    timelineWrap.setPointerCapture(e.pointerId);
+    seekToClientX(e.clientX);
+    if (state.idleTimer) clearTimeout(state.idleTimer);
+  });
+  timelineWrap.addEventListener('pointermove', e => {
+    if (state.scrubbing) seekToClientX(e.clientX);
+  });
+  timelineWrap.addEventListener('pointerup', e => {
+    if (state.scrubbing) {
+      state.scrubbing = false;
+      timelineWrap.releasePointerCapture(e.pointerId);
+      scheduleHudAutoHide();
+    }
+  });
+
+  window.addEventListener('mousemove', wakeHud, { passive: true });
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      togglePlay();
+    } else if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault();
+      replay();
+    } else if (e.key === 'h' || e.key === 'H') {
+      e.preventDefault();
+      toggleHudManual();
+    } else if (e.key === 'l' || e.key === 'L') {
+      e.preventDefault();
+      toggleLoop();
+    }
+  });
+
+  // Main Render Function strictly honoring Dual Clocks:
+  //   - Camera Z Push-In & Parallax strictly stepped at 24fps (tCam)
+  //   - All Collage Motion & ±2px / ±0.5° Hand-Jitter strictly stepped at 12fps (tObj / animFrame)
+  function renderFrame(force = false) {
+    const camFrame = Math.floor(state.time * CAM_FPS);
+    const animFrame = Math.floor(state.breathTime * STOP_FPS);
+
+    if (!force && camFrame === state.lastCamFrame && animFrame === state.lastAnimFrame) {
+      return;
+    }
+    state.lastCamFrame = camFrame;
+    state.lastAnimFrame = animFrame;
+
+    const tCam = Math.min(TOTAL_DURATION, camFrame / CAM_FPS);
+    const isHoldingEnd = state.time >= TOTAL_DURATION - 0.001 && !state.loop;
+    const tObj = animFrame / STOP_FPS;
+    const breathScale = isHoldingEnd ? 0.65 : 1.0;
+
+    const pal = samplePalette(tCam);
+    const cam = getCamera(tCam);
+
+    // 1. Textured Paper Backdrop + Desk Lamp + Stars
+    drawBackdrop(pal, tCam, animFrame);
+
+    // 2. Depth-Sorted 2.5D Multiplane Papercraft Layers
+    const layers = gatherSceneLayers(cam, tCam, tObj, animFrame);
+    for (let i = 0; i < layers.length; i++) {
+      renderLayer(layers[i], cam, animFrame, breathScale);
+    }
+
+    // 3. Chapter Archival Letterpress Stamp (top-left)
+    drawChapterCornerTag(tCam, animFrame);
+
+    // 4. Grand Finale Embossed Title (31.8s–36s & living hold)
+    drawGrandFinaleTitle(tCam, animFrame);
+  }
+
+  function tick(now) {
+    if (state.lastRaf === null) state.lastRaf = now;
+    const dt = Math.min(0.1, (now - state.lastRaf) / 1000);
+    state.lastRaf = now;
+
+    if (state.playing && !state.scrubbing) {
+      state.breathTime += dt;
+      if (state.time < TOTAL_DURATION) {
+        state.time += dt;
+        if (state.time >= TOTAL_DURATION) {
+          if (state.loop) {
+            state.time %= TOTAL_DURATION;
+            state.breathTime = state.time;
+          } else {
+            state.time = TOTAL_DURATION;
+            // Stay gently alive at 12fps in the living freeze-frame hold!
+          }
+        }
+        syncHud();
+      }
+    }
+
+    renderFrame(false);
+    requestAnimationFrame(tick);
+  }
+
+  /* =========================================================================
+   * 11. BOOTSTRAP
+   * ========================================================================= */
+  buildPaperAtlas();
+  buildAllSprites();
+  syncHud();
+
+  if (isInspectMode) {
+    hudEl.style.transition = 'none';
+    setHudVisibility(false);
+    renderFrame(true);
+  } else {
+    setHudVisibility(true);
+    scheduleHudAutoHide();
+    renderFrame(true);
+    requestAnimationFrame(tick);
+  }
+})();
+</script>
+</body>
+</html>
